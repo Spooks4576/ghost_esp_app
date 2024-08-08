@@ -38,7 +38,8 @@ bool back_event_callback(void* context) {
         }
         send_uart_command("stopscan", state);
 
-        furi_delay_ms(500);
+        furi_delay_ms(
+            700); // Delaying Here due to us stopping the buffer before recieving pcap data
 
         if(state->uart_context->storageContext->current_file &&
            storage_file_is_open(state->uart_context->storageContext->current_file)) {
