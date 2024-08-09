@@ -125,10 +125,8 @@ int32_t ghost_esp_app(void* p) {
     view_dispatcher_set_navigation_event_callback(state->view_dispatcher, back_event_callback);
     view_dispatcher_set_event_callback_context(state->view_dispatcher, state);
 
-    // Run the dispatcher
     view_dispatcher_run(state->view_dispatcher);
 
-    // Return previous state of expansion
     furi_record_close(RECORD_GUI);
 
     view_dispatcher_remove_view(state->view_dispatcher, 0);
