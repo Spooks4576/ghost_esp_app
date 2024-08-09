@@ -165,7 +165,10 @@ static void main_menu_view_draw_callback(Canvas* canvas, void* _model) {
         elements_string_fit_width(canvas, disp_str, card_width + 40); // Fit text within the card
         canvas_set_color(canvas, is_selected ? ColorWhite : ColorBlack);
         canvas_draw_str(
-            canvas, card_x + 5, card_y_position + card_height - 8, furi_string_get_cstr(disp_str));
+            canvas,
+            position == 3 ? card_x + 3 : card_x + 5,
+            card_y_position + card_height - 8,
+            furi_string_get_cstr(disp_str));
         furi_string_free(disp_str);
 
         position++;

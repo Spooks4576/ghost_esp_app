@@ -341,7 +341,7 @@ void show_main_menu(AppState* state) {
     main_menu_add_item(state->main_menu, "WiFi", 0, submenu_callback, state);
     main_menu_add_item(state->main_menu, "BLE", 1, submenu_callback, state);
     main_menu_add_item(state->main_menu, "GPS", 2, submenu_callback, state);
-    main_menu_add_item(state->main_menu, "COG", 3, submenu_callback, state);
+    main_menu_add_item(state->main_menu, "CONF", 3, submenu_callback, state);
     view_dispatcher_switch_to_view(state->view_dispatcher, 0);
     state->current_view = 0;
 }
