@@ -64,6 +64,22 @@ void on_channelswitchdelay_changed(VariableItem* item) {
     }
 }
 
+void on_togglechannelhopping_changed(VariableItem* item) {
+    uint8_t index = variable_item_get_current_value_index(item);
+    AppState* app = variable_item_get_context(item);
+
+    switch(index) {
+    case 0:
+        variable_item_set_current_value_text(item, "False");
+        send_uart_command("setsetting -i 3 -v 1\n", app);
+        break;
+    case 1:
+        variable_item_set_current_value_text(item, "True");
+        send_uart_command("setsetting -i 3 -v 2\n", app);
+        break;
+    }
+}
+
 int32_t ghost_esp_app(void* p) {
     UNUSED(p);
 
@@ -98,8 +114,11 @@ int32_t ghost_esp_app(void* p) {
         variable_item_list_add(state->settings_menu, "RGB Mode", 3, on_rgb_mode_changed, state);
     VariableItem* item2 = variable_item_list_add(
         state->settings_menu, "Channel Switch Delay", 5, on_channelswitchdelay_changed, state);
+    VariableItem* item3 = variable_item_list_add(
+        state->settings_menu, "Enable Channel Hopping", 2, on_togglechannelhopping_changed, state);
     variable_item_set_current_value_text(item, "Stealth");
     variable_item_set_current_value_text(item2, "500ms");
+    variable_item_set_current_value_text(item3, "False");
 
     view_dispatcher_add_view(state->view_dispatcher, 0, main_menu_get_view(state->main_menu));
     view_dispatcher_add_view(state->view_dispatcher, 1, submenu_get_view(state->wifi_menu));

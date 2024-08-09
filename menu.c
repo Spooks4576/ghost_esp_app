@@ -182,6 +182,18 @@ void handle_ble_menu(AppState* state, uint32_t index) {
         "airtagscan",
         "sniffbt"};
 
+    if(index == 8) {
+        send_uart_command(ble_commands[index], state);
+        uart_receive_data(
+            state->uart_context,
+            state->view_dispatcher,
+            state,
+            "btscan",
+            "pcap",
+            GHOST_ESP_APP_FOLDER_PCAPS);
+        return;
+    }
+
     send_uart_command(ble_commands[index], state);
     uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
 }
