@@ -5,7 +5,7 @@ App(
     name="[ESP32] Ghost ESP",  # Displayed in menus
     apptype=FlipperAppType.EXTERNAL,
     entry_point="ghost_esp_app",
-    stack_size=2 * 1024,
+    stack_size=3 * 1024,
     fap_category="GPIO/ESP",
     # Optional values
     fap_version="0.1",

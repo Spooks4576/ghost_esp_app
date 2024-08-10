@@ -10,16 +10,12 @@
 void handle_uart_rx_data(uint8_t* buf, size_t len, void* context) {
     AppState* state = (AppState*)context;
 
-    // Define a maximum buffer size (e.g., 1024 bytes)
-    const size_t MAX_BUFFER_SIZE = 1024;
+    const size_t MAX_BUFFER_SIZE = 2 * 1024;
 
-    // Ensure the received data is null-terminated
     buf[len] = '\0';
 
-    // Calculate the new total length needed for the buffer
-    size_t new_total_len = state->buffer_length + len + 1; // +1 for null terminator
+    size_t new_total_len = state->buffer_length + len + 1;
 
-    // Check if the new data will exceed the max buffer size
     if(new_total_len > MAX_BUFFER_SIZE) {
         // Clear and free the buffer
         free(state->textBoxBuffer);
@@ -28,24 +24,19 @@ void handle_uart_rx_data(uint8_t* buf, size_t len, void* context) {
         FURI_LOG_I("UART", "Buffer cleared due to exceeding max size");
     }
 
-    // Reallocate memory for the buffer to hold the new data
     char* new_buffer = realloc(state->textBoxBuffer, new_total_len);
     if(new_buffer == NULL) {
         FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
         return;
     }
 
-    // Append the new data to the buffer
-    memcpy(new_buffer + state->buffer_length, buf, len + 1); // +1 to include the null terminator
+    memcpy(new_buffer + state->buffer_length, buf, len + 1);
 
-    // Update the AppState buffer and length
     state->textBoxBuffer = new_buffer;
     state->buffer_length += len;
 
-    // Update the TextBox with the new buffer content
     text_box_set_text(state->text_box, state->textBoxBuffer);
 
-    // Write the received data to the log file if logging is enabled
     if(state->uart_context->storageContext->log_file) {
         storage_file_write(state->uart_context->storageContext->log_file, buf, len);
     }
