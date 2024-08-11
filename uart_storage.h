@@ -8,6 +8,7 @@ typedef struct {
     Storage* storage_api;
     File* current_file;
     File* log_file;
+    File* settings_file;
     UartContext* parentContext;
     bool HasOpenedFile;
     bool IsWritingToFile;

@@ -11,11 +11,12 @@
 #include "menu.h"
 #include "uart_storage.h"
 
-#define RX_BUF_SIZE 256
-#define GHOST_ESP_APP_FOLDER "/ext/apps_data/ghost_esp"
-#define GHOST_ESP_APP_FOLDER_PCAPS "/ext/apps_data/ghost_esp/pcaps"
+#define RX_BUF_SIZE                   256
+#define GHOST_ESP_APP_FOLDER          "/ext/apps_data/ghost_esp"
+#define GHOST_ESP_APP_FOLDER_PCAPS    "/ext/apps_data/ghost_esp/pcaps"
 #define GHOST_ESP_APP_FOLDER_WARDRIVE "/ext/apps_data/ghost_esp/wardrive"
-#define GHOST_ESP_APP_FOLDER_LOGS "/ext/apps_data/ghost_esp/logs"
+#define GHOST_ESP_APP_FOLDER_LOGS     "/ext/apps_data/ghost_esp/logs"
+#define GHOST_ESP_APP_SETTINGS_FILE   "/ext/apps_data/ghost_esp/settings.ini"
 
 typedef enum {
     WorkerEvtStop = (1 << 0),
