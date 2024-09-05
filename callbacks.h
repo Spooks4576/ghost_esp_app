@@ -6,76 +6,32 @@ typedef struct {
     uint8_t enable_random_ble_mac_index;
 } Settings;
 
+void set_default_settings(Settings* settings) {
+    settings->rgb_mode_index = 0; // Default: Stealth
+    settings->channel_hop_delay_index = 0; // Default: 500ms
+    settings->enable_channel_hopping_index = 0; // Default: Disabled
+    settings->enable_random_ble_mac_index = 0; // Default: Disabled
+}
+
 // Create settings string from the struct
 char* create_settings_string(Settings* settings) {
     char* settings_string = (char*)malloc(5); // Allocate memory for 4 settings + null terminator
     if(settings_string == NULL) {
         return NULL;
     }
-
-    snprintf(settings_string, 5, "%hhu%hhu%hhu%hhu",
-             settings->rgb_mode_index,
-             settings->channel_hop_delay_index,
-             settings->enable_channel_hopping_index,
-             settings->enable_random_ble_mac_index);
-
+    snprintf(
+        settings_string,
+        5,
+        "%hhu%hhu%hhu%hhu",
+        settings->rgb_mode_index,
+        settings->channel_hop_delay_index,
+        settings->enable_channel_hopping_index,
+        settings->enable_random_ble_mac_index);
     return settings_string;
 }
 
-// Read and parse the settings from a file into the struct
-bool read_and_parse_settings_file(File* file, const char* file_path, Settings* settings) {
-    storage_file_seek(file, 0, true);
-
-    uint64_t file_size = storage_file_size(file);
-    FURI_LOG_I("Ghost ESP", "File size: %llu", file_size);
-
-    if(file_size < 4) { // Ensure there are 4 bytes
-        FURI_LOG_I("Ghost ESP", "File is invalid or empty: %s\n", file_path);
-        return false;
-    }
-
-    char buffer[5]; // 4 bytes for settings, 1 for null terminator
-    int bytes_read = storage_file_read(file, buffer, 4);
-    FURI_LOG_I("Ghost ESP", "Bytes read: %d", bytes_read);
-
-    buffer[4] = '\0';
-
-    FURI_LOG_I("Ghost ESP", "Buffer contents (hex): %02X %02X %02X %02X",
-               buffer[0], buffer[1], buffer[2], buffer[3]);
-
-    if(buffer[0] >= '0' && buffer[0] <= '2') {
-        settings->rgb_mode_index = buffer[0] - '0';
-    } else {
-        FURI_LOG_I("Ghost ESP", "Invalid RGB Mode Index: %c", buffer[0]);
-        return false;
-    }
-
-    if(buffer[1] >= '0' && buffer[1] <= '9') {
-        settings->channel_hop_delay_index = buffer[1] - '0';
-    } else {
-        FURI_LOG_I("Ghost ESP", "Invalid Channel Hop Delay Index: %c", buffer[1]);
-        return false;
-    }
-
-    if(buffer[2] >= '0' && buffer[2] <= '1') {
-        settings->enable_channel_hopping_index = buffer[2] - '0';
-    } else {
-        FURI_LOG_I("Ghost ESP", "Invalid Enable Channel Hopping Index: %c", buffer[2]);
-        return false;
-    }
-
-    if(buffer[3] >= '0' && buffer[3] <= '1') {
-        settings->enable_random_ble_mac_index = buffer[3] - '0';
-    } else {
-        FURI_LOG_I("Ghost ESP", "Invalid Random BLE MAC Index: %c", buffer[3]);
-        return false;
-    }
-
-    return true;
-}
-
-// Write settings to the file
 bool write_settings_to_file(File* file, Settings* settings) {
+    // Seek to the start of the file and truncate it to start fresh
     if(!storage_file_seek(file, 0, true)) {
         FURI_LOG_I("Ghost ESP", "Failed to seek to the beginning of the file.\n");
         return false;
@@ -86,11 +42,14 @@ bool write_settings_to_file(File* file, Settings* settings) {
         return false;
     }
 
+    // Create the settings string from the structure
     char* settings_string = create_settings_string(settings);
     if(settings_string == NULL) {
+        FURI_LOG_I("Ghost ESP", "Failed to allocate memory for settings string.\n");
         return false;
     }
 
+    // Write the settings string to the file
     size_t data_length = strlen(settings_string);
     size_t bytes_written = storage_file_write(file, settings_string, data_length);
     free(settings_string);
@@ -100,7 +59,72 @@ bool write_settings_to_file(File* file, Settings* settings) {
         return false;
     }
 
+    FURI_LOG_I("Ghost ESP", "Settings successfully written to the file.");
     return true;
+}
+
+bool read_and_parse_settings_file(File* file, const char* file_path, Settings* settings) {
+    // Seek to the start of the file
+    storage_file_seek(file, 0, true);
+
+    // Check the size of the file
+    uint64_t file_size = storage_file_size(file);
+    if(file_size < 4) { // Ensure there are 4 bytes to read
+        FURI_LOG_I("Ghost ESP", "File is invalid or empty: %s\n", file_path);
+        set_default_settings(settings);
+        write_settings_to_file(file, settings); // Reset to default settings if file is too short
+        return false;
+    }
+
+    // Read the settings from the file
+    char buffer[5]; // Buffer to hold the settings data
+    int bytes_read = storage_file_read(file, buffer, 4);
+    if(bytes_read != 4) {
+        FURI_LOG_I("Ghost ESP", "Failed to read the required number of bytes.");
+        set_default_settings(settings);
+        write_settings_to_file(file, settings); // Reset to default settings if read fails
+        return false;
+    }
+    buffer[4] = '\0'; // Ensure null termination for proper string operations
+
+    // Parse each setting from the buffer
+    bool invalid = false;
+    if(buffer[0] >= '0' && buffer[0] <= '2') {
+        settings->rgb_mode_index = buffer[0] - '0';
+    } else {
+        FURI_LOG_I("Ghost ESP", "Invalid RGB Mode Index: %c", buffer[0]);
+        invalid = true;
+    }
+
+    if(buffer[1] >= '0' && buffer[1] <= '9') {
+        settings->channel_hop_delay_index = buffer[1] - '0';
+    } else {
+        FURI_LOG_I("Ghost ESP", "Invalid Channel Hop Delay Index: %c", buffer[1]);
+        invalid = true;
+    }
+
+    if(buffer[2] >= '0' && buffer[2] <= '1') {
+        settings->enable_channel_hopping_index = buffer[2] - '0';
+    } else {
+        FURI_LOG_I("Ghost ESP", "Invalid Enable Channel Hopping Index: %c", buffer[2]);
+        invalid = true;
+    }
+
+    if(buffer[3] >= '0' && buffer[3] <= '1') {
+        settings->enable_random_ble_mac_index = buffer[3] - '0';
+    } else {
+        FURI_LOG_I("Ghost ESP", "Invalid Random BLE MAC Index: %c", buffer[3]);
+        invalid = true;
+    }
+
+    // If any setting is invalid, reset to default settings and rewrite the file
+    if(invalid) {
+        FURI_LOG_I("Ghost ESP", "Invalid data detected, resetting to default settings.");
+        set_default_settings(settings);
+        write_settings_to_file(file, settings);
+    }
+
+    return !invalid; // Return true if settings are valid, false otherwise
 }
 
 // Helper function to update and write settings
@@ -115,8 +139,10 @@ void on_rgb_mode_changed(VariableItem* item) {
     Settings settings;
 
     // Read the current settings
-    if(!read_and_parse_settings_file(app->uart_context->storageContext->settings_file,
-                                     GHOST_ESP_APP_SETTINGS_FILE, &settings)) {
+    if(!read_and_parse_settings_file(
+           app->uart_context->storageContext->settings_file,
+           GHOST_ESP_APP_SETTINGS_FILE,
+           &settings)) {
         return;
     }
 
@@ -148,8 +174,10 @@ void on_channelswitchdelay_changed(VariableItem* item) {
     Settings settings;
 
     // Read the current settings
-    if(!read_and_parse_settings_file(app->uart_context->storageContext->settings_file,
-                                     GHOST_ESP_APP_SETTINGS_FILE, &settings)) {
+    if(!read_and_parse_settings_file(
+           app->uart_context->storageContext->settings_file,
+           GHOST_ESP_APP_SETTINGS_FILE,
+           &settings)) {
         return;
     }
 
@@ -189,8 +217,10 @@ void on_togglechannelhopping_changed(VariableItem* item) {
     Settings settings;
 
     // Read the current settings
-    if(!read_and_parse_settings_file(app->uart_context->storageContext->settings_file,
-                                     GHOST_ESP_APP_SETTINGS_FILE, &settings)) {
+    if(!read_and_parse_settings_file(
+           app->uart_context->storageContext->settings_file,
+           GHOST_ESP_APP_SETTINGS_FILE,
+           &settings)) {
         return;
     }
 
@@ -218,8 +248,10 @@ void on_ble_mac_changed(VariableItem* item) {
     Settings settings;
 
     // Read the current settings
-    if(!read_and_parse_settings_file(app->uart_context->storageContext->settings_file,
-                                     GHOST_ESP_APP_SETTINGS_FILE, &settings)) {
+    if(!read_and_parse_settings_file(
+           app->uart_context->storageContext->settings_file,
+           GHOST_ESP_APP_SETTINGS_FILE,
+           &settings)) {
         return;
     }
 
