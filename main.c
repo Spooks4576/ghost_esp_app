@@ -126,15 +126,6 @@ int32_t ghost_esp_app(void* p) {
             variable_item_set_current_value_text(item4, "True");
             break;
         }
-    } else { // Fallback
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, "Stealth");
-        variable_item_set_current_value_index(item2, 0);
-        variable_item_set_current_value_text(item2, "500ms");
-        variable_item_set_current_value_index(item3, 1);
-        variable_item_set_current_value_text(item3, "True");
-        variable_item_set_current_value_index(item4, 0);
-        variable_item_set_current_value_text(item4, "False");
     }
 
     view_dispatcher_add_view(state->view_dispatcher, 0, main_menu_get_view(state->main_menu));
