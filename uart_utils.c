@@ -7,8 +7,9 @@
 
 #define WORKER_ALL_RX_EVENTS (WorkerEvtStop | WorkerEvtRxDone | WorkerEvtPcapDone)
 
-void handle_uart_rx_data(uint8_t* buf, size_t len, void* context) {
-    AppState* state = (AppState*)context;
+void handle_uart_rx_data(uint8_t *buf, size_t len, void *context)
+{
+    AppState *state = (AppState *)context;
 
     const size_t MAX_BUFFER_SIZE = 2 * 1024;
 
@@ -16,7 +17,8 @@ void handle_uart_rx_data(uint8_t* buf, size_t len, void* context) {
 
     size_t new_total_len = state->buffer_length + len + 1;
 
-    if(new_total_len > MAX_BUFFER_SIZE) {
+    if (new_total_len > MAX_BUFFER_SIZE)
+    {
         // Clear and free the buffer
         free(state->textBoxBuffer);
         state->textBoxBuffer = NULL;
@@ -24,8 +26,9 @@ void handle_uart_rx_data(uint8_t* buf, size_t len, void* context) {
         FURI_LOG_I("UART", "Buffer cleared due to exceeding max size");
     }
 
-    char* new_buffer = realloc(state->textBoxBuffer, new_total_len);
-    if(new_buffer == NULL) {
+    char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
+    if (new_buffer == NULL)
+    {
         FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
         return;
     }
@@ -37,48 +40,64 @@ void handle_uart_rx_data(uint8_t* buf, size_t len, void* context) {
 
     text_box_set_text(state->text_box, state->textBoxBuffer);
 
-    if(state->uart_context->storageContext->log_file) {
+    if (state->uart_context->storageContext->log_file)
+    {
         storage_file_write(state->uart_context->storageContext->log_file, buf, len);
     }
 }
 
 // UART receive callback function
 static void
-    uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
-    UartContext* uart = (UartContext*)context;
+uart_rx_callback(FuriHalSerialHandle *handle, FuriHalSerialRxEvent event, void *context)
+{
+    UartContext *uart = (UartContext *)context;
 
-    if(event == FuriHalSerialRxEventData) {
+    if (event == FuriHalSerialRxEventData)
+    {
         uint8_t data = furi_hal_serial_async_rx(handle);
 
-        const char* mark_begin = "[BUF/BEGIN]";
-        const char* mark_close = "[BUF/CLOSE]";
+        const char *mark_begin = "[BUF/BEGIN]";
+        const char *mark_close = "[BUF/CLOSE]";
 
-        if(uart->mark_test_idx != 0) {
-            if(data == mark_begin[uart->mark_test_idx] ||
-               data == mark_close[uart->mark_test_idx]) {
+        if (uart->mark_test_idx != 0)
+        {
+            if (data == mark_begin[uart->mark_test_idx] ||
+                data == mark_close[uart->mark_test_idx])
+            {
                 uart->mark_test_buf[uart->mark_test_idx++] = data;
 
-                if(uart->mark_test_idx == sizeof(uart->mark_test_buf)) {
-                    if(!memcmp(
-                           uart->mark_test_buf, (void*)mark_begin, sizeof(uart->mark_test_buf))) {
+                if (uart->mark_test_idx == sizeof(uart->mark_test_buf))
+                {
+                    if (!memcmp(
+                            uart->mark_test_buf, (void *)mark_begin, sizeof(uart->mark_test_buf)))
+                    {
                         uart->pcap = true;
-                    } else if(!memcmp(
-                                  uart->mark_test_buf,
-                                  (void*)mark_close,
-                                  sizeof(uart->mark_test_buf))) {
+                    }
+                    else if (!memcmp(
+                                 uart->mark_test_buf,
+                                 (void *)mark_close,
+                                 sizeof(uart->mark_test_buf)))
+                    {
                         uart->pcap = false;
-                    } else {
+                    }
+                    else
+                    {
                     }
 
                     uart->mark_test_idx = 0;
                 }
                 return;
-            } else {
-                if(uart->pcap) {
+            }
+            else
+            {
+                if (uart->pcap)
+                {
                     furi_stream_buffer_send(
                         uart->pcap_stream, uart->mark_test_buf, uart->mark_test_idx, 0);
                     furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
-                } else {
+                }
+                else
+                {
                     furi_stream_buffer_send(
                         uart->rx_stream, uart->mark_test_buf, uart->mark_test_idx, 0);
                     furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
@@ -87,42 +106,58 @@ static void
             }
         }
 
-        if(data == mark_begin[0]) {
+        if (data == mark_begin[0])
+        {
             uart->mark_test_buf[uart->mark_test_idx++] = data;
-        } else {
-            if(uart->pcap) {
+        }
+        else
+        {
+            if (uart->pcap)
+            {
                 furi_stream_buffer_send(uart->pcap_stream, &data, 1, 0);
                 furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
-            } else {
+            }
+            else
+            {
                 furi_stream_buffer_send(uart->rx_stream, &data, 1, 0);
                 furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
             }
         }
-    } else {
+    }
+    else
+    {
     }
 }
 
 // UART worker thread function
-static int32_t uart_worker(void* context) {
-    UartContext* uart = (void*)context;
+static int32_t uart_worker(void *context)
+{
+    UartContext *uart = (void *)context;
 
-    while(1) {
+    while (1)
+    {
         uint32_t events =
             furi_thread_flags_wait(WORKER_ALL_RX_EVENTS, FuriFlagWaitAny, FuriWaitForever);
         furi_check((events & FuriFlagError) == 0);
-        if(events & WorkerEvtStop) break;
-        if(events & WorkerEvtRxDone) {
+        if (events & WorkerEvtStop)
+            break;
+        if (events & WorkerEvtRxDone)
+        {
             size_t len = furi_stream_buffer_receive(uart->rx_stream, uart->rx_buf, RX_BUF_SIZE, 0);
-            if(len > 0) {
-                if(uart->handle_rx_data_cb)
+            if (len > 0)
+            {
+                if (uart->handle_rx_data_cb)
                     uart->handle_rx_data_cb(uart->rx_buf, len, uart->state);
             }
         }
-        if(events & WorkerEvtPcapDone) {
+        if (events & WorkerEvtPcapDone)
+        {
             size_t len =
                 furi_stream_buffer_receive(uart->pcap_stream, uart->rx_buf, RX_BUF_SIZE, 0);
-            if(len > 0) {
-                if(uart->handle_rx_pcap_cb) uart->handle_rx_pcap_cb(uart->rx_buf, len, uart);
+            if (len > 0)
+            {
+                if (uart->handle_rx_pcap_cb)
+                    uart->handle_rx_pcap_cb(uart->rx_buf, len, uart);
             }
         }
     }
@@ -134,8 +169,9 @@ static int32_t uart_worker(void* context) {
 }
 
 // Initialize UART context and set up UART
-UartContext* uart_init(AppState* state) {
-    UartContext* uart = malloc(sizeof(UartContext));
+UartContext *uart_init(AppState *state)
+{
+    UartContext *uart = malloc(sizeof(UartContext));
     uart->serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUsart);
     furi_hal_serial_init(uart->serial_handle, 115200);
     uart->rx_stream = furi_stream_buffer_alloc(RX_BUF_SIZE, 1);
@@ -158,44 +194,50 @@ UartContext* uart_init(AppState* state) {
 }
 
 // Cleanup UART resources and stop UART thread
-void uart_free(UartContext* uart) {
-    if(!uart) return;
+void uart_free(UartContext *uart)
+{
+    if (!uart)
+        return;
     furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtStop);
     furi_thread_join(uart->rx_thread);
     furi_thread_free(uart->rx_thread);
     furi_hal_serial_deinit(uart->serial_handle);
     furi_hal_serial_control_release(uart->serial_handle);
-    furi_stream_buffer_free(uart->rx_stream);
-    furi_stream_buffer_free(uart->pcap_stream);
     uart_storage_free(uart->storageContext);
     free(uart);
 }
 
 // Stop the UART thread (typically when exiting)
-void uart_stop_thread(UartContext* uart) {
-    if(uart && uart->rx_thread) {
+void uart_stop_thread(UartContext *uart)
+{
+    if (uart && uart->rx_thread)
+    {
         furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtStop);
     }
 }
 
 // Send data over UART
-void uart_send(UartContext* uart, const uint8_t* data, size_t len) {
-    if(uart && uart->serial_handle) {
+void uart_send(UartContext *uart, const uint8_t *data, size_t len)
+{
+    if (uart && uart->serial_handle)
+    {
         furi_hal_serial_tx(uart->serial_handle, data, len);
     }
 }
 
 void uart_receive_data(
-    UartContext* uart,
-    ViewDispatcher* view_dispatcher,
-    AppState* state,
-    const char* prefix,
-    const char* extension,
-    const char* TargetFolder) {
+    UartContext *uart,
+    ViewDispatcher *view_dispatcher,
+    AppState *state,
+    const char *prefix,
+    const char *extension,
+    const char *TargetFolder)
+{
     UNUSED(uart);
     text_box_set_text(state->text_box, "");
     text_box_set_focus(state->text_box, TextBoxFocusEnd);
-    if(strlen(prefix) > 1) {
+    if (strlen(prefix) > 1)
+    {
         uart->storageContext->HasOpenedFile = sequential_file_open(
             uart->storageContext->storage_api,
             uart->storageContext->current_file,

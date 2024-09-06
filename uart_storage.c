@@ -7,37 +7,44 @@
 
 #define COMMAND_BUFFER_SIZE 128
 
-void uart_storage_rx_callback(uint8_t* buf, size_t len, void* context) {
+void uart_storage_rx_callback(uint8_t *buf, size_t len, void *context)
+{
     furi_assert(context);
-    UartContext* app = context;
+    UartContext *app = context;
 
-    if(app->storageContext->HasOpenedFile) {
+    if (app->storageContext->HasOpenedFile)
+    {
         storage_file_write(app->storageContext->current_file, buf, len);
     }
 }
 
 // Initialize UART storage context
-UartStorageContext* uart_storage_init(UartContext* parentContext) {
-    UartStorageContext* ctx = malloc(sizeof(UartStorageContext));
+UartStorageContext *uart_storage_init(UartContext *parentContext)
+{
+    UartStorageContext *ctx = malloc(sizeof(UartStorageContext));
     ctx->storage_api = furi_record_open(RECORD_STORAGE);
     ctx->current_file = storage_file_alloc(ctx->storage_api);
     ctx->log_file = storage_file_alloc(ctx->storage_api);
     ctx->settings_file = storage_file_alloc(ctx->storage_api);
     ctx->parentContext = parentContext;
 
-    if(!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER)) {
+    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER))
+    {
         storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER);
     }
 
-    if(!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_LOGS)) {
+    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_LOGS))
+    {
         storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER_LOGS);
     }
 
-    if(!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_WARDRIVE)) {
+    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_WARDRIVE))
+    {
         storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER_WARDRIVE);
     }
 
-    if(!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_PCAPS)) {
+    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_PCAPS))
+    {
         storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER_PCAPS);
     }
 
@@ -49,18 +56,21 @@ UartStorageContext* uart_storage_init(UartContext* parentContext) {
 
     uint64_t FileSize = storage_file_size(ctx->settings_file);
 
-    if(FileSize == 0) {
-        const char* Data = "112";
+    if (FileSize == 0)
+    {
+        const char *Data = "0000";
         storage_file_write(ctx->settings_file, Data, strlen(Data));
     }
     return ctx;
 }
 
 // Free UART storage context
-void uart_storage_free(UartStorageContext* ctx) {
-    UartStorageContext* mainctx = (UartStorageContext*)ctx;
+void uart_storage_free(UartStorageContext *ctx)
+{
+    UartStorageContext *mainctx = (UartStorageContext *)ctx;
 
-    if(mainctx->current_file) {
+    if (mainctx->current_file)
+    {
         storage_file_free(mainctx->current_file);
         storage_file_free(mainctx->log_file);
         storage_file_free(mainctx->settings_file);
