@@ -36,7 +36,10 @@ bool back_event_callback(void* context) {
             }
             state->buffer_length = 0;
         }
-        send_uart_command("stopscan", state);
+        send_uart_command("stopscan\n", state);
+        send_uart_command("stopspam\n", state);
+        send_uart_command("stopdeauth\n", state);
+        send_uart_command("blescan -s\n", state);
 
         furi_delay_ms(
             700); // Delaying Here due to us stopping the buffer before recieving pcap data
@@ -76,27 +79,19 @@ bool back_event_callback(void* context) {
 void show_wifi_menu(AppState* state) {
     const char* wifi_labels[] = {
         "Scan WiFi APs",
-        "Scan WiFi Stations",
         "List APs",
-        "List Stations",
         "Select AP",
-        "Select Station",
-        "Add Random SSID",
-        "Add SSID",
         "Beacon Spam (List)",
         "Beacon Spam (Random)",
         "Beacon Spam (Rickroll)",
-        "Cast V2 Connect",
-        "Dial Connect",
-        "Deauth Detector",
-        "Deauth Stations",
+        "Cast V2 Connect (Not Implemented Yet)",
+        "Dial Connect (Not Implemented Yet)",
+        "Broadcast Deauth",
         "Sniff Raw Packets",
         "Sniff PMKID",
         "Sniff Probes",
-        "Sniff PWN",
-        "Sniff Deauth",
-        "Calibrate",
-        "Attack WPS"};
+        "Sniff WPS",
+        "Sniff Deauth"};
 
     submenu_reset(state->wifi_menu);
     submenu_set_header(state->wifi_menu, "WiFi Utilities:");
@@ -110,11 +105,6 @@ void show_wifi_menu(AppState* state) {
 
 void show_ble_menu(AppState* state) {
     const char* ble_labels[] = {
-        "BLE Spam (Samsung)",
-        "BLE Spam (Apple)",
-        "BLE Spam (Google)",
-        "BLE Spam (Windows)",
-        "BLE Spam (All)",
         "Find the Flippers",
         "BLE Spam Detector",
         "AirTag Scanner",
@@ -131,7 +121,7 @@ void show_ble_menu(AppState* state) {
 }
 
 void show_gps_menu(AppState* state) {
-    const char* gps_labels[] = {"Street Detector", "WarDrive"};
+    const char* gps_labels[] = {"Street Detector (Not Implemented Yet)", "WarDrive (Not Implemented Yet)"};
     submenu_reset(state->gps_menu);
     submenu_set_header(state->gps_menu, "GPS Utilities:");
     for(unsigned int i = 0; i < sizeof(gps_labels) / sizeof(gps_labels[0]); i++) {
@@ -144,45 +134,32 @@ void show_gps_menu(AppState* state) {
 
 void handle_wifi_menu(AppState* state, uint32_t index) {
     const char* wifi_commands[] = {
-        "scanap",
-        "scansta",
-        "list -a",
-        "list -c",
-        "select -a",
-        "select -s",
-        "ssid -a -g",
-        "ssid -a -n",
-        "attack -t beacon -l",
-        "attack -t beacon -r",
-        "attack -t rickroll",
-        "castv2connect -s SSID -p PASSWORD -v Y7uhkyameuk",
-        "dialconnect -s GSQ1 -p 7802378253 -t youtube -v Y7uhkyameuk",
-        "deauthdetector -s SSID -p PASSWORD -w WebHookUrl",
-        "attack -t deauth",
-        "sniffraw",
-        "sniffpmkid",
-        "sniffprobe",
-        "sniffpwn",
-        "sniffdeauth",
-        "calibrate",
-        "attack -t wps_pwn"};
+        "scanap\n",
+        "list -a\n",
+        "select -a\n",
+        "beaconspam -l\n",
+        "beaconspam -r\n",
+        "beaconspam -rr\n",
+        "castv2connect -s SSID -p PASSWORD -v Y7uhkyameuk\n",
+        "dialconnect -s SSID -p PASS -t youtube -v Y7uhkyameuk\n",
+        "attack -d\n",
+        "capture -raw\n",
+        "capture -eapol\n",
+        "capture -probe\n",
+        "capture -wps\n",
+        "capture -deauth\n"};
 
     handle_wifi_commands(state, index, wifi_commands);
 }
 
 void handle_ble_menu(AppState* state, uint32_t index) {
     const char* ble_commands[] = {
-        "blespam -t samsung",
-        "blespam -t apple",
-        "blespam -t google",
-        "blespam -t windows",
-        "blespam -t all",
-        "findtheflippers",
-        "detectblespam",
-        "airtagscan",
-        "sniffbt"};
+        "blescan -f\n",
+        "blescan -ds\n",
+        "blescan -a\n",
+        "blescan -r\n"};
 
-    if(index == 8) {
+    if(index == 3) {
         send_uart_command(ble_commands[index], state);
         uart_receive_data(
             state->uart_context,
@@ -199,7 +176,7 @@ void handle_ble_menu(AppState* state, uint32_t index) {
 }
 
 void handle_gps_menu(AppState* state, uint32_t index) {
-    const char* gps_commands[] = {"streetdetector", "wardrive"};
+    const char* gps_commands[] = {"streetdetector\n", "wardrive\n"};
     send_uart_command(gps_commands[index], state);
 
     uart_receive_data(
@@ -253,31 +230,10 @@ void submenu_callback(void* context, uint32_t index) {
     }
 }
 
-static void text_input_result_callback(void* context) {
-    AppState* input_state = (AppState*)context;
-
-    // Send the UART command if accepted
-
-    send_uart_command_with_text(
-        input_state->uart_command, input_state->input_buffer, (AppState*)input_state);
-
-    uart_receive_data(
-        input_state->uart_context, input_state->view_dispatcher, input_state, "", "", "");
-}
-
 // Function to handle WiFi commands
 void handle_wifi_commands(AppState* state, uint32_t index, const char** wifi_commands) {
     switch(index) {
-    case 4: // Select AP
-    case 5: // Select Station
-    case 7: // Add SSID
-    case 6:
-        state->uart_command = wifi_commands[index];
-        text_input_set_result_callback(
-            state->text_input, text_input_result_callback, state, state->input_buffer, 32, true);
-        view_dispatcher_switch_to_view(state->view_dispatcher, 6);
-        break;
-    case 15:
+    case 9:
         send_uart_command(wifi_commands[index], state);
         uart_receive_data(
             state->uart_context,
@@ -287,7 +243,7 @@ void handle_wifi_commands(AppState* state, uint32_t index, const char** wifi_com
             "pcap",
             GHOST_ESP_APP_FOLDER_PCAPS);
         break;
-    case 16:
+    case 10:
         send_uart_command(wifi_commands[index], state);
         uart_receive_data(
             state->uart_context,
@@ -297,7 +253,7 @@ void handle_wifi_commands(AppState* state, uint32_t index, const char** wifi_com
             "pcap",
             GHOST_ESP_APP_FOLDER_PCAPS);
         break;
-    case 17:
+    case 11:
         send_uart_command(wifi_commands[index], state);
         uart_receive_data(
             state->uart_context,
@@ -307,17 +263,17 @@ void handle_wifi_commands(AppState* state, uint32_t index, const char** wifi_com
             "pcap",
             GHOST_ESP_APP_FOLDER_PCAPS);
         break;
-    case 18:
+    case 12:
         send_uart_command(wifi_commands[index], state);
         uart_receive_data(
             state->uart_context,
             state->view_dispatcher,
             state,
-            "pwn_capture",
+            "wps_capture",
             "pcap",
             GHOST_ESP_APP_FOLDER_PCAPS);
         break;
-    case 19:
+    case 13:
         send_uart_command(wifi_commands[index], state);
         uart_receive_data(
             state->uart_context,
