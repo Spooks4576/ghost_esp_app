@@ -92,9 +92,10 @@ void show_wifi_menu(AppState* state) {
         "Sniff WPS",
         "Sniff Deauth",
         "Evil Portal",
-        "Connect",
-        "Dial",
-        "Arp Spoof"};
+        "Connect To WiFi",
+        "Dial Random Video",
+        "Arp Spoof",
+        "Printer Power"};
 
     submenu_reset(state->wifi_menu);
     submenu_set_header(state->wifi_menu, "WiFi Utilities:");
@@ -150,8 +151,8 @@ void handle_wifi_menu(AppState* state, uint32_t index) {
         "capture -deauth\n",
         "startportal",
         "connect",
-        "dialtest\n",
-        "arpspoof 192.168.1.65 192.168.1.221 bc:93:07:75:18:1c\n"};
+        "dialconnect\n",
+        "powerprinter"};
 
     handle_wifi_commands(state, index, wifi_commands);
 }
@@ -245,6 +246,7 @@ void handle_wifi_commands(AppState* state, uint32_t index, const char** wifi_com
     switch(index) {
     case 14:
     case 15:
+    case 17:
     case 4:
         state->uart_command = wifi_commands[index];
         text_input_set_result_callback(
