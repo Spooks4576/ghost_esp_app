@@ -94,7 +94,6 @@ void show_wifi_menu(AppState* state) {
         "Evil Portal",
         "Connect To WiFi",
         "Dial Random Video",
-        "Arp Spoof",
         "Printer Power"};
 
     submenu_reset(state->wifi_menu);
