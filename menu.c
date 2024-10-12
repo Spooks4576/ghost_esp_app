@@ -8,9 +8,11 @@ void send_uart_command(const char* command, AppState* state) {
     uart_send(state->uart_context, (uint8_t*)command, strlen(command));
 }
 
-void send_uart_command_with_text(const char* command, const char* text, AppState* state) {
+void send_uart_command_with_text(const char* command, char* text, AppState* state) {
     char buffer[256];
+
     snprintf(buffer, sizeof(buffer), "%s %s\n", command, text);
+
     uart_send(state->uart_context, (uint8_t*)buffer, strlen(buffer));
 }
 
@@ -89,7 +91,10 @@ void show_wifi_menu(AppState* state) {
         "Sniff Probes",
         "Sniff WPS",
         "Sniff Deauth",
-        "Evil Portal"};
+        "Evil Portal",
+        "Connect",
+        "Dial",
+        "Arp Spoof"};
 
     submenu_reset(state->wifi_menu);
     submenu_set_header(state->wifi_menu, "WiFi Utilities:");
@@ -143,7 +148,10 @@ void handle_wifi_menu(AppState* state, uint32_t index) {
         "capture -probe\n",
         "capture -wps\n",
         "capture -deauth\n",
-        "startportal"};
+        "startportal",
+        "connect",
+        "dialtest\n",
+        "arpspoof 192.168.1.65 192.168.1.221 bc:93:07:75:18:1c\n"};
 
     handle_wifi_commands(state, index, wifi_commands);
 }
@@ -225,8 +233,6 @@ void submenu_callback(void* context, uint32_t index) {
 static void text_input_result_callback(void* context) {
     AppState* input_state = (AppState*)context;
 
-    // Send the UART command if accepted
-
     send_uart_command_with_text(
         input_state->uart_command, input_state->input_buffer, (AppState*)input_state);
 
@@ -238,6 +244,7 @@ static void text_input_result_callback(void* context) {
 void handle_wifi_commands(AppState* state, uint32_t index, const char** wifi_commands) {
     switch(index) {
     case 14:
+    case 15:
     case 4:
         state->uart_command = wifi_commands[index];
         text_input_set_result_callback(

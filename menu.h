@@ -33,7 +33,7 @@ typedef struct {
 
 // Function declarations
 void send_uart_command(const char* command, AppState* state);
-void send_uart_command_with_text(const char* command, const char* text, AppState* state);
+void send_uart_command_with_text(const char* command, char* text, AppState* state);
 void send_uart_command_with_bytes(
     const char* command,
     const uint8_t* bytes,
