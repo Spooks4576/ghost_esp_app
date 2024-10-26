@@ -28,18 +28,8 @@ A Flipper Zero application for interfacing with the the Ghost ESP32 firmware.
   - BLE MAC randomization
   - Auto-stop on back button
 
-## Building
-
-To build from source:
-```bash
-git clone [repository URL]
-cd ghost_esp
-./fbt fap_ghost_esp
-```
-The compiled FAP will be available in the dist directory.
-
-
 ## Credits
 
-Original Ghost ESP32 firmware by Spacehuhn
-
+- Made by [Spooky](https://github.com/Spooks4576)
+- Original Ghost ESP32 firmware by [Spacehuhn](https://github.com/spacehuhn)
+- Additional contributions by the community
