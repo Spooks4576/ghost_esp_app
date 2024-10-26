@@ -244,12 +244,8 @@ bool back_event_callback(void* context) {
         // Only send stop commands if enabled in settings
         if(state->settings.stop_on_back_index) {
             // Send all relevant stop commands
-            send_uart_command("stopscan\n", state);
-            send_uart_command("stopspam\n", state);
-            send_uart_command("stopdeauth\n", state);
-            send_uart_command("capture -stop\n", state);
-            send_uart_command("blescan -s\n", state);
-            furi_delay_ms(700);
+            send_uart_command("stop\n", state);
+
         }
 
         // Close any open files
