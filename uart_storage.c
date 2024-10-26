@@ -7,74 +7,86 @@
 
 #define COMMAND_BUFFER_SIZE 128
 
-void uart_storage_rx_callback(uint8_t *buf, size_t len, void *context)
-{
+void uart_storage_rx_callback(uint8_t *buf, size_t len, void *context) {
     furi_assert(context);
     UartContext *app = context;
-
-    if (app->storageContext->HasOpenedFile)
-    {
+    
+    if(app->storageContext->HasOpenedFile) {
+        FURI_LOG_D("UartStorage", "Writing %d bytes to file", len);
         storage_file_write(app->storageContext->current_file, buf, len);
     }
 }
 
 // Initialize UART storage context
-UartStorageContext *uart_storage_init(UartContext *parentContext)
-{
+UartStorageContext *uart_storage_init(UartContext *parentContext) {
+    FURI_LOG_I("UartStorage", "Initializing UART storage");
+    
     UartStorageContext *ctx = malloc(sizeof(UartStorageContext));
+    if(!ctx) {
+        FURI_LOG_E("UartStorage", "Failed to allocate context");
+        return NULL;
+    }
+
+    // Initialize context
     ctx->storage_api = furi_record_open(RECORD_STORAGE);
     ctx->current_file = storage_file_alloc(ctx->storage_api);
     ctx->log_file = storage_file_alloc(ctx->storage_api);
-    ctx->settings_file = storage_file_alloc(ctx->storage_api);
     ctx->parentContext = parentContext;
+    ctx->HasOpenedFile = false;
+    ctx->IsWritingToFile = false;
 
-    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER))
-    {
-        storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER);
+    // Create necessary directories
+    const char* directories[] = {
+        GHOST_ESP_APP_FOLDER,
+        GHOST_ESP_APP_FOLDER_LOGS,
+        GHOST_ESP_APP_FOLDER_WARDRIVE,
+        GHOST_ESP_APP_FOLDER_PCAPS
+    };
+
+    for(size_t i = 0; i < sizeof(directories)/sizeof(directories[0]); i++) {
+        if(!storage_dir_exists(ctx->storage_api, directories[i])) {
+            FURI_LOG_I("UartStorage", "Creating directory: %s", directories[i]);
+            if(!storage_simply_mkdir(ctx->storage_api, directories[i])) {
+                FURI_LOG_W("UartStorage", "Failed to create directory: %s", directories[i]);
+            }
+        }
     }
 
-    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_LOGS))
-    {
-        storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER_LOGS);
+    // Open log file
+    FURI_LOG_I("UartStorage", "Opening log file");
+    if(!sequential_file_open(
+        ctx->storage_api,
+        ctx->log_file,
+        GHOST_ESP_APP_FOLDER_LOGS,
+        "ghost_logs",
+        "txt")) {
+        FURI_LOG_E("UartStorage", "Failed to open log file");
     }
 
-    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_WARDRIVE))
-    {
-        storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER_WARDRIVE);
-    }
-
-    if (!storage_dir_exists(ctx->storage_api, GHOST_ESP_APP_FOLDER_PCAPS))
-    {
-        storage_simply_mkdir(ctx->storage_api, GHOST_ESP_APP_FOLDER_PCAPS);
-    }
-
-    sequential_file_open(
-        ctx->storage_api, ctx->log_file, GHOST_ESP_APP_FOLDER_LOGS, "ghost_logs", "txt");
-
-    storage_file_open(
-        ctx->settings_file, GHOST_ESP_APP_SETTINGS_FILE, FSAM_READ_WRITE, FSOM_OPEN_ALWAYS);
-
-    uint64_t FileSize = storage_file_size(ctx->settings_file);
-
-    if (FileSize == 0)
-    {
-        const char *Data = "0000";
-        storage_file_write(ctx->settings_file, Data, strlen(Data));
-    }
+    FURI_LOG_I("UartStorage", "UART storage initialized successfully");
     return ctx;
 }
 
 // Free UART storage context
-void uart_storage_free(UartStorageContext *ctx)
-{
-    UartStorageContext *mainctx = (UartStorageContext *)ctx;
-
-    if (mainctx->current_file)
-    {
-        storage_file_free(mainctx->current_file);
-        storage_file_free(mainctx->log_file);
-        storage_file_free(mainctx->settings_file);
+void uart_storage_free(UartStorageContext *ctx) {
+    if(!ctx) {
+        FURI_LOG_E("UartStorage", "Null context in uart_storage_free");
+        return;
     }
-    furi_record_close(RECORD_STORAGE);
-    free(mainctx);
+
+    FURI_LOG_I("UartStorage", "Freeing UART storage");
+
+    if(ctx->current_file) {
+        storage_file_free(ctx->current_file);
+    }
+    if(ctx->log_file) {
+        storage_file_free(ctx->log_file);
+    }
+
+    if(ctx->storage_api) {
+        furi_record_close(RECORD_STORAGE);
+    }
+
+    free(ctx);
+    FURI_LOG_I("UartStorage", "UART storage freed");
 }

@@ -248,3 +248,30 @@ void uart_receive_data(
     view_dispatcher_switch_to_view(view_dispatcher, 5);
     state->current_view = 5;
 }
+
+bool uart_is_esp_connected(UartContext* uart) {
+    if(!uart || !uart->serial_handle) return false;
+
+    // Clear any existing data
+    if(uart->state && uart->state->textBoxBuffer) {
+        free(uart->state->textBoxBuffer);
+        uart->state->textBoxBuffer = malloc(1);
+        uart->state->textBoxBuffer[0] = '\0';
+        uart->state->buffer_length = 0;
+    }
+
+    // Send a simple test command
+    const char* test_cmd = "info\n";
+    uart_send(uart, (uint8_t*)test_cmd, strlen(test_cmd));
+
+    // Wait for response
+    uint32_t start_time = furi_get_tick();
+    while(furi_get_tick() - start_time < ESP_CHECK_TIMEOUT_MS) {
+        if(uart->state && uart->state->textBoxBuffer && uart->state->buffer_length > 0) {
+            return true;
+        }
+        furi_delay_ms(10);
+    }
+
+    return false;
+}
