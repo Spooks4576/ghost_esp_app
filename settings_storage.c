@@ -9,28 +9,23 @@ static bool write_header(File* file);
 static bool verify_header(File* file);
 
 bool settings_storage_init() {
+    if(storage != NULL) {
+        FURI_LOG_I("SettingsStorage", "Storage already initialized");
+        return true;
+    }
     FURI_LOG_I("SettingsStorage", "Starting storage initialization");
     storage = furi_record_open(RECORD_STORAGE);
     if(storage == NULL) {
         FURI_LOG_E("SettingsStorage", "Failed to open RECORD_STORAGE");
         return false;
     }
-
-    FURI_LOG_I("SettingsStorage", "Creating app directory");
-    if(!storage_simply_mkdir(storage, GHOST_ESP_APP_FOLDER)) {
-        FURI_LOG_W("SettingsStorage", "Failed to create app directory (might already exist)");
-    }
-
-    FURI_LOG_I("SettingsStorage", "Checking for settings file");
-    if(!storage_file_exists(storage, GHOST_ESP_APP_SETTINGS_FILE)) {
-        FURI_LOG_I("SettingsStorage", "Settings file not found, creating with defaults");
-        Settings default_settings = {0};
-        settings_storage_save(&default_settings, GHOST_ESP_APP_SETTINGS_FILE);
-    }
-
+    // Attempt to create directory without checking if it exists
+    storage_simply_mkdir(storage, GHOST_ESP_APP_FOLDER);
+    // Proceed without checking for settings file existence
     FURI_LOG_I("SettingsStorage", "Storage initialization complete");
     return true;
 }
+
 
 static bool write_header(File* file) {
     SettingsHeader header = {
