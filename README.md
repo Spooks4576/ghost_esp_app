@@ -31,5 +31,4 @@ A Flipper Zero application for interfacing with the the Ghost ESP32 firmware.
 ## Credits
 
 - Made by [Spooky](https://github.com/Spooks4576)
-- Original Ghost ESP32 firmware by [Spacehuhn](https://github.com/spacehuhn)
 - Additional contributions by the community
