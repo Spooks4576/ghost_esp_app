@@ -1,8 +1,5 @@
 # Ghost ESP App Menu Guide
 
-## Overview
-This guide explains how to add new menu items and commands to the Ghost ESP application. The app uses a structured approach for menu organization, command execution, and UI feedback.
-
 ## Menu Command Structure
 ```c
 typedef struct {
