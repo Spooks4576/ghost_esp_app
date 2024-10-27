@@ -3,13 +3,14 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/text_box.h>
 #include <gui/modules/submenu.h>
-#include "gui_modules/mainmenu.h"
+#include "mainmenu.h"
 #include <gui/modules/text_input.h>
 #include <gui/modules/variable_item_list.h>
 #include "app_state.h"
 
+
 // Function declarations
-void send_uart_command(const char* command, AppState* state);
+void send_uart_command(const char* command, void* state);  // Changed from AppState* to void*
 void send_uart_command_with_text(const char* command, char* text, AppState* state);
 void send_uart_command_with_bytes(
     const char* command,
