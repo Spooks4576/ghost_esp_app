@@ -1,5 +1,9 @@
-# Ghost ESP App
-A Flipper Zero application for interfacing with the Ghost ESP32 firmware.
+# Ghost ESP
+A Flipper Zero application for interfacing with the Ghost ESP32 firmware
+
+## Preview
+![image](https://github.com/user-attachments/assets/dbff6546-24ed-4d20-af6e-0e01e1643385)
+
 
 ## Features
 - WiFi Operations
@@ -30,6 +34,7 @@ A Flipper Zero application for interfacing with the Ghost ESP32 firmware.
   - Clear logs functionality
   - ESP reboot option
   - NVS clearing with confirmation
+
 
 ## Credits
 - Made by [Spooky](https://github.com/Spooks4576)
