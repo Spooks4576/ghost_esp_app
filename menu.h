@@ -3,7 +3,7 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/text_box.h>
 #include <gui/modules/submenu.h>
-#include "mainmenu.h"
+#include "gui_modules/mainmenu.h"
 #include <gui/modules/text_input.h>
 #include <gui/modules/variable_item_list.h>
 #include "app_state.h"

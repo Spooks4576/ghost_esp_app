@@ -60,4 +60,3 @@ void uart_receive_data(
     const char* TargetFolder);
 bool uart_is_esp_connected(UartContext* uart);
 void uart_storage_reset_logs(UartStorageContext *ctx);
-#endif // UART_UTILS_H
