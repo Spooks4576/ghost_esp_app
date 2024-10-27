@@ -1,3 +1,4 @@
+// utils.h
 #pragma once
 #include "app_state.h"
 #include "confirmation_view.h"
@@ -10,4 +11,4 @@ void show_confirmation_dialog_ex(
     ConfirmationViewCallback ok_callback,
     ConfirmationViewCallback cancel_callback);
 
-void show_confirmation_view_wrapper(void* context, ConfirmationView* view);
+void show_confirmation_view_wrapper(void* context, ConfirmationView* view);  // Added declaration

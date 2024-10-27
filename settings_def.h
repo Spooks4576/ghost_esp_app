@@ -53,13 +53,27 @@ typedef struct {
     uint8_t clear_nvs_index;
 } Settings;
 
-// Setting metadata structure
+// Add this to settings_def.h
 typedef struct {
     const char* name;
-    uint8_t max_value;
-    const char* const* value_names;  // Changed to const char* const*
-    const char* uart_command;
+    const char* command;
+    void (*callback)(void* context);  // Function pointer for the action
+} SettingAction;
+
+typedef struct {
+    const char* name;
+    union {
+        struct {
+            uint8_t max_value;
+            const char* const* value_names;
+            const char* uart_command;
+        } setting;
+        SettingAction action;
+    } data;
+    bool is_action;
 } SettingMetadata;
+
+
 
 // Value name arrays
 extern const char* const SETTING_VALUE_NAMES_RGB_MODE[];

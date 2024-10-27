@@ -34,17 +34,21 @@ int32_t ghost_esp_app(void* p) {
     }
     furi_delay_ms(200);
 
-
     // Set up UI
     AppState* state = malloc(sizeof(AppState));
+    if (!state) return -1;
     memset(state, 0, sizeof(AppState));  // Zero all memory first
 
     // Initialize text buffers
     state->textBoxBuffer = malloc(1);
-    state->textBoxBuffer[0] = '\0';
+    if (state->textBoxBuffer) {
+        state->textBoxBuffer[0] = '\0';
+    }
     state->buffer_length = 0;
     state->input_buffer = malloc(32);
-    memset(state->input_buffer, 0, 32);
+    if (state->input_buffer) {
+        memset(state->input_buffer, 0, 32);
+    }
 
     // Initialize UI components
     state->view_dispatcher = view_dispatcher_alloc();
@@ -58,11 +62,11 @@ int32_t ghost_esp_app(void* p) {
     state->confirmation_view = confirmation_view_alloc();
 
     // Set headers after allocation
-    main_menu_set_header(state->main_menu, "Select a Utility");
-    submenu_set_header(state->wifi_menu, "Select a Wifi Utility");
-    submenu_set_header(state->ble_menu, "Select a Bluetooth Utility");
-    submenu_set_header(state->gps_menu, "Select a GPS Utility");
-    text_input_set_header_text(state->text_input, "Enter Your Text");
+    if(state->main_menu) main_menu_set_header(state->main_menu, "Select a Utility");
+    if(state->wifi_menu) submenu_set_header(state->wifi_menu, "Select a Wifi Utility");
+    if(state->ble_menu) submenu_set_header(state->ble_menu, "Select a Bluetooth Utility");
+    if(state->gps_menu) submenu_set_header(state->gps_menu, "Select a GPS Utility");
+    if(state->text_input) text_input_set_header_text(state->text_input, "Enter Your Text");
 
     // Initialize storage and load settings before UART
     settings_storage_init();
@@ -78,6 +82,10 @@ int32_t ghost_esp_app(void* p) {
     state->settings_ui_context.switch_to_view = NULL;
     state->settings_ui_context.show_confirmation_view = show_confirmation_view_wrapper;
     state->settings_ui_context.context = state;
+    state->settings_actions_menu = submenu_alloc();
+    if(state->settings_actions_menu) {
+        submenu_set_header(state->settings_actions_menu, "Settings Actions");
+    }
 
     // Initialize settings menu
     settings_setup_gui(state->settings_menu, &state->settings_ui_context);
@@ -85,52 +93,106 @@ int32_t ghost_esp_app(void* p) {
     // Initialize UART after settings are ready
     state->uart_context = uart_init(state);
 
-    // Add views
-    view_dispatcher_add_view(state->view_dispatcher, 0, main_menu_get_view(state->main_menu));
-    view_dispatcher_add_view(state->view_dispatcher, 1, submenu_get_view(state->wifi_menu));
-    view_dispatcher_add_view(state->view_dispatcher, 2, submenu_get_view(state->ble_menu));
-    view_dispatcher_add_view(state->view_dispatcher, 3, submenu_get_view(state->gps_menu));
-    view_dispatcher_add_view(state->view_dispatcher, 4, variable_item_list_get_view(state->settings_menu));
-    view_dispatcher_add_view(state->view_dispatcher, 5, text_box_get_view(state->text_box));
-    view_dispatcher_add_view(state->view_dispatcher, 6, text_input_get_view(state->text_input));
-    view_dispatcher_add_view(state->view_dispatcher, 7, confirmation_view_get_view(state->confirmation_view));
+    // Add views if view_dispatcher exists
+    if(state->view_dispatcher) {
+        if(state->main_menu) view_dispatcher_add_view(state->view_dispatcher, 0, main_menu_get_view(state->main_menu));
+        if(state->wifi_menu) view_dispatcher_add_view(state->view_dispatcher, 1, submenu_get_view(state->wifi_menu));
+        if(state->ble_menu) view_dispatcher_add_view(state->view_dispatcher, 2, submenu_get_view(state->ble_menu));
+        if(state->gps_menu) view_dispatcher_add_view(state->view_dispatcher, 3, submenu_get_view(state->gps_menu));
+        if(state->settings_menu) view_dispatcher_add_view(state->view_dispatcher, 4, variable_item_list_get_view(state->settings_menu));
+        if(state->text_box) view_dispatcher_add_view(state->view_dispatcher, 5, text_box_get_view(state->text_box));
+        if(state->text_input) view_dispatcher_add_view(state->view_dispatcher, 6, text_input_get_view(state->text_input));
+        if(state->confirmation_view) view_dispatcher_add_view(state->view_dispatcher, 7, confirmation_view_get_view(state->confirmation_view));
+        if(state->settings_actions_menu) view_dispatcher_add_view(state->view_dispatcher, 8, submenu_get_view(state->settings_actions_menu));
+    }
 
     // Show main menu
     show_main_menu(state);
 
     // Set up GUI
     Gui* gui = furi_record_open("gui");
-    view_dispatcher_attach_to_gui(state->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
-    view_dispatcher_set_navigation_event_callback(state->view_dispatcher, back_event_callback);
-    view_dispatcher_set_event_callback_context(state->view_dispatcher, state);
-    view_dispatcher_run(state->view_dispatcher);
+    if(gui && state->view_dispatcher) {
+        view_dispatcher_attach_to_gui(state->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
+        view_dispatcher_set_navigation_event_callback(state->view_dispatcher, back_event_callback);
+        view_dispatcher_set_event_callback_context(state->view_dispatcher, state);
+        view_dispatcher_run(state->view_dispatcher);
+    }
     furi_record_close("gui");
 
-    // Cleanup views
-    {
-        size_t i;
-        for(i = 0; i <= 7; i++) {
+    // Start cleanup - first remove views
+    if(state->view_dispatcher) {
+        for(size_t i = 0; i <= 8; i++) {
             view_dispatcher_remove_view(state->view_dispatcher, i);
         }
     }
 
-    // Cleanup UART
-    uart_free(state->uart_context);
+    // Clear callbacks before cleanup
+    if(state->confirmation_view) {
+        confirmation_view_set_ok_callback(state->confirmation_view, NULL, NULL);
+        confirmation_view_set_cancel_callback(state->confirmation_view, NULL, NULL);
+    }
 
-    // Cleanup UI components
-    text_input_free(state->text_input);
-    text_box_free(state->text_box);
-    main_menu_free(state->main_menu);
-    submenu_free(state->wifi_menu);
-    variable_item_list_free(state->settings_menu);
-    submenu_free(state->ble_menu);
-    submenu_free(state->gps_menu);
-    view_dispatcher_free(state->view_dispatcher);
-    confirmation_view_free(state->confirmation_view);
+    // Clean up UART first
+    if(state->uart_context) {
+        uart_free(state->uart_context);
+        state->uart_context = NULL;
+    }
+
+    // Cleanup UI components in reverse order
+    if(state->confirmation_view) {
+        confirmation_view_free(state->confirmation_view);
+        state->confirmation_view = NULL;
+    }
+    if(state->text_input) {
+        text_input_free(state->text_input);
+        state->text_input = NULL;
+    }
+    if(state->text_box) {
+        text_box_free(state->text_box);
+        state->text_box = NULL;
+    }
+    if(state->settings_actions_menu) {
+        submenu_free(state->settings_actions_menu);
+        state->settings_actions_menu = NULL;
+    }
+    if(state->settings_menu) {
+        variable_item_list_free(state->settings_menu);
+        state->settings_menu = NULL;
+    }
+    if(state->wifi_menu) {
+        submenu_free(state->wifi_menu);
+        state->wifi_menu = NULL;
+    }
+    if(state->ble_menu) {
+        submenu_free(state->ble_menu);
+        state->ble_menu = NULL;
+    }
+    if(state->gps_menu) {
+        submenu_free(state->gps_menu);
+        state->gps_menu = NULL;
+    }
+    if(state->main_menu) {
+        main_menu_free(state->main_menu);
+        state->main_menu = NULL;
+    }
+
+    // Free view dispatcher last after all views are removed
+    if(state->view_dispatcher) {
+        view_dispatcher_free(state->view_dispatcher);
+        state->view_dispatcher = NULL;
+    }
 
     // Cleanup buffers
-    free(state->input_buffer);
-    free(state->textBoxBuffer);
+    if(state->input_buffer) {
+        free(state->input_buffer);
+        state->input_buffer = NULL;
+    }
+    if(state->textBoxBuffer) {
+        free(state->textBoxBuffer);
+        state->textBoxBuffer = NULL;
+    }
+
+    // Final state cleanup
     free(state);
 
     // Handle OTG state

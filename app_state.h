@@ -30,6 +30,7 @@ struct AppState {
     // Settings
     Settings settings;
     SettingsUIContext settings_ui_context;
+    Submenu* settings_actions_menu;
     
     // State
     uint8_t current_view;

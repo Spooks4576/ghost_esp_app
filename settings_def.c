@@ -6,59 +6,85 @@
 const char* const SETTING_VALUE_NAMES_RGB_MODE[] = {"Stealth", "Normal", "Rainbow"};
 const char* const SETTING_VALUE_NAMES_CHANNEL_HOP[] = {"500ms", "1000ms", "2000ms", "3000ms", "4000ms"};
 const char* const SETTING_VALUE_NAMES_BOOL[] = {"False", "True"};
-const char* const SETTING_VALUE_NAMES_ACTION[] = {"Press OK"};
+const char* const SETTING_VALUE_NAMES_ACTION[] = {"Press OK", "Press OK"};
+
+#include "settings_ui.h"  // Add this include at the top
 
 const SettingMetadata SETTING_METADATA[SETTINGS_COUNT] = {
     [SETTING_RGB_MODE] = {
         .name = "RGB Mode",
-        .max_value = RGB_MODE_COUNT - 1,
-        .value_names = SETTING_VALUE_NAMES_RGB_MODE,
-        .uart_command = "setsetting -i 1 -v"  // Command formatting handled in UI
+        .data.setting = {
+            .max_value = RGB_MODE_COUNT - 1,
+            .value_names = SETTING_VALUE_NAMES_RGB_MODE,
+            .uart_command = "setsetting -i 1 -v"
+        },
+        .is_action = false
     },
     [SETTING_CHANNEL_HOP_DELAY] = {
         .name = "Channel Switch Delay",
-        .max_value = CHANNEL_HOP_COUNT - 1,
-        .value_names = SETTING_VALUE_NAMES_CHANNEL_HOP,
-        .uart_command = "setsetting -i 2 -v"  // Command formatting handled in UI
+        .data.setting = {
+            .max_value = CHANNEL_HOP_COUNT - 1,
+            .value_names = SETTING_VALUE_NAMES_CHANNEL_HOP,
+            .uart_command = "setsetting -i 2 -v"
+        },
+        .is_action = false
     },
     [SETTING_ENABLE_CHANNEL_HOPPING] = {
         .name = "Enable Channel Hopping",
-        .max_value = 1,
-        .value_names = SETTING_VALUE_NAMES_BOOL,
-        .uart_command = "setsetting -i 3 -v"  // Command formatting handled in UI
+        .data.setting = {
+            .max_value = 1,
+            .value_names = SETTING_VALUE_NAMES_BOOL,
+            .uart_command = "setsetting -i 3 -v"
+        },
+        .is_action = false
     },
     [SETTING_ENABLE_RANDOM_BLE_MAC] = {
         .name = "Enable Random BLE Mac",
-        .max_value = 1,
-        .value_names = SETTING_VALUE_NAMES_BOOL,
-        .uart_command = "setsetting -i 4 -v"  // Command formatting handled in UI
+        .data.setting = {
+            .max_value = 1,
+            .value_names = SETTING_VALUE_NAMES_BOOL,
+            .uart_command = "setsetting -i 4 -v"
+        },
+        .is_action = false
     },
     [SETTING_STOP_ON_BACK] = {
         .name = "Stop On Back",
-        .max_value = 1,
-        .value_names = SETTING_VALUE_NAMES_BOOL,
-        .uart_command = NULL  // This setting doesn't need a UART command
+        .data.setting = {
+            .max_value = 1,
+            .value_names = SETTING_VALUE_NAMES_BOOL,
+            .uart_command = NULL
+        },
+        .is_action = false
     },
     [SETTING_REBOOT_ESP] = {
         .name = "Reboot ESP",
-        .max_value = 0,
-        .value_names = SETTING_VALUE_NAMES_ACTION,
-        .uart_command = "handle_reboot"  // Command formatting handled in UI
+        .data.action = {
+            .name = "Reboot ESP",
+            .command = "handle_reboot",
+            .callback = NULL
+        },
+        .is_action = true
     },
     [SETTING_CLEAR_LOGS] = {
         .name = "Clear Log Files",
-        .max_value = 0,
-        .value_names = SETTING_VALUE_NAMES_ACTION,
-        .uart_command = NULL  // No UART command needed
+        .data.action = {
+            .name = "Clear Log Files",
+            .command = NULL,
+            .callback = &clear_log_files  // Now this should compile
+        },
+        .is_action = true
     },
     [SETTING_CLEAR_NVS] = {
         .name = "Clear NVS",
-        .max_value = 0,
-        .value_names = SETTING_VALUE_NAMES_ACTION,
-        .uart_command = "handle_clearnvs"  // Command formatting handled in UI
+        .data.action = {
+            .name = "Clear NVS",
+            .command = "handle_clearnvs",
+            .callback = NULL
+        },
+        .is_action = true
     }
 };
-
+// Update the function signature to include the is_action flag
 const SettingMetadata* settings_get_metadata(SettingKey key) {
     if(key >= SETTINGS_COUNT) {
         return NULL;

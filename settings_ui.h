@@ -14,6 +14,7 @@ typedef void (*ShowConfirmationViewCallback)(void* context, ConfirmationView* vi
 typedef struct SettingsUIContext SettingsUIContext;
 
 // Function declarations
+void clear_log_files(void* context);  // Add this declaration
 void settings_setup_gui(VariableItemList* list, SettingsUIContext* context);
 bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* context);
 uint8_t settings_get(const Settings* settings, SettingKey key);
