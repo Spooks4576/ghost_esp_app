@@ -9,31 +9,27 @@
 #include <storage/storage.h>
 #include "settings_storage.h"
 #include "utils.h"
-#include "callbacks.h"  // Added for access to the callbacks
+#include "callbacks.h"
 
 typedef struct {
     SettingsUIContext* settings_ui_context;
     SettingKey key;
 } VariableItemContext;
 
+
 // Function to clear log files
 void clear_log_files(void* context) {
-    FURI_LOG_I("ClearLogs", "Entering clear_log_files function");
+    AppState* app = (AppState*)context;
 
-    SettingsUIContext* settings_context = (SettingsUIContext*)context;
+    FURI_LOG_I("ClearLogs", "Entering clear_log_files function");
 
     FURI_LOG_I("ClearLogs", "Starting log cleanup");
 
-    // First close current log file if it exists
-    if(settings_context && settings_context->context) {
-        FURI_LOG_D("ClearLogs", "Valid settings_context and context found");
-        AppState* app = (AppState*)settings_context->context;
-
-        if(app->uart_context && app->uart_context->storageContext && 
-           app->uart_context->storageContext->log_file) {
-            FURI_LOG_D("ClearLogs", "Closing current log file");
-            storage_file_close(app->uart_context->storageContext->log_file);
-        }
+    // Close current log file if it exists
+    if(app && app->uart_context && app->uart_context->storageContext &&
+       app->uart_context->storageContext->log_file) {
+        FURI_LOG_D("ClearLogs", "Closing current log file");
+        storage_file_close(app->uart_context->storageContext->log_file);
     }
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -73,18 +69,14 @@ void clear_log_files(void* context) {
     FURI_LOG_I("ClearLogs", "Deleted %d files", deleted_count);
 
     // Create new log file
-    if(settings_context && settings_context->context) {
-        AppState* app = (AppState*)settings_context->context;
-
-        if(app->uart_context && app->uart_context->storageContext) {
-            FURI_LOG_I("ClearLogs", "Creating new log file");
-            sequential_file_open(
-                app->uart_context->storageContext->storage_api,
-                app->uart_context->storageContext->log_file,
-                GHOST_ESP_APP_FOLDER_LOGS,
-                "ghost_logs",
-                "txt");
-        }
+    if(app && app->uart_context && app->uart_context->storageContext) {
+        FURI_LOG_I("ClearLogs", "Creating new log file");
+        sequential_file_open(
+            app->uart_context->storageContext->storage_api,
+            app->uart_context->storageContext->log_file,
+            GHOST_ESP_APP_FOLDER_LOGS,
+            "ghost_logs",
+            "txt");
     }
 
     furi_record_close(RECORD_STORAGE);
@@ -144,23 +136,14 @@ bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* conte
             break;
 
         case SETTING_CLEAR_LOGS:
-            if(value == 0) { // Execute on press
-                FURI_LOG_I("SettingsSet", "Clearing log files");
-                clear_log_files(context);
-            }
-            break;
-
         case SETTING_CLEAR_NVS:
             if(value == 0) { // Execute on press
                 SettingsUIContext* settings_context = (SettingsUIContext*)context;
                 if(settings_context && settings_context->context) {
-                    FURI_LOG_I("SettingsSet", "Showing confirmation dialog to clear NVS");
-                    show_confirmation_dialog_ex(
-                        settings_context->context,
-                        "Clear NVS",
-                        "Are you sure you want to clear NVS?\nThis will reset all ESP settings.",
-                        nvs_clear_confirmed_callback,
-                        nvs_clear_cancelled_callback);
+                    FURI_LOG_I("SettingsSet", "Posting custom event to show confirmation dialog");
+                    AppState* app_state = (AppState*)settings_context->context;
+                    // Post a custom event with the key
+                    view_dispatcher_send_custom_event(app_state->view_dispatcher, key);
                 }
             }
             break;
@@ -177,7 +160,6 @@ bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* conte
 
     return true;
 }
-
 
 uint8_t settings_get(const Settings* settings, SettingKey key) {
     FURI_LOG_D("SettingsGet", "Getting setting for key: %d", key);
@@ -231,7 +213,13 @@ static void settings_item_change_callback(VariableItem* item) {
     if(metadata->is_action) {
         // Action button pressed
         FURI_LOG_D("SettingsChange", "Action button detected for key: %d", key);
-        
+
+        // Reset the action button's value to allow future presses
+        variable_item_set_current_value_index(item, 0);
+        variable_item_set_current_value_text(item, metadata->data.action.name);
+        FURI_LOG_D("SettingsChange", "Action button state reset for key: %d", key);
+
+        // Execute the action
         if(metadata->data.action.callback) {
             FURI_LOG_D("SettingsChange", "Executing callback for action key: %d", key);
             metadata->data.action.callback(context);
@@ -244,10 +232,6 @@ static void settings_item_change_callback(VariableItem* item) {
             FURI_LOG_I("SettingsChange", "No action handler found for key: %d", key);
         }
 
-        // Reset the action button's value to allow future presses
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, metadata->data.action.name);
-        FURI_LOG_D("SettingsChange", "Action button state reset for key: %d", key);
         return;
     }
 
@@ -265,10 +249,12 @@ static void settings_item_change_callback(VariableItem* item) {
         }
     }
 }
+
 static void settings_menu_callback(void* context, uint32_t index) {
     UNUSED(index);
     AppState* app_state = context;
     view_dispatcher_switch_to_view(app_state->view_dispatcher, 4); // Switch to settings view
+    app_state->current_view = 4;
 }
 
 static void settings_action_callback(void* context, uint32_t index) {
@@ -281,52 +267,81 @@ void settings_setup_gui(VariableItemList* list, SettingsUIContext* context) {
     FURI_LOG_D("SettingsSetup", "Entering settings_setup_gui");
     AppState* app_state = (AppState*)context->context;
 
-    // First add settings submenu item
-    submenu_add_item(app_state->settings_actions_menu,
-                    "Configuration",
-                    SETTINGS_COUNT,
-                    settings_menu_callback,
-                    app_state);
+    // Add "Configuration" submenu item
+    submenu_add_item(
+        app_state->settings_actions_menu,
+        "Configuration  >",
+        SETTINGS_COUNT,
+        settings_menu_callback,
+        app_state);
 
-    // Add all regular settings to variable item list
+    // Iterate over all settings
     for(SettingKey key = 0; key < SETTINGS_COUNT; key++) {
         const SettingMetadata* metadata = settings_get_metadata(key);
-        if(!metadata || metadata->is_action) continue;  // Skip action items
-        
-        VariableItemContext* item_context = malloc(sizeof(VariableItemContext));
-        if(!item_context) {
-            FURI_LOG_E("SettingsSetup", "Failed to allocate memory for item context");
-            continue;
-        }
-        item_context->settings_ui_context = context;
-        item_context->key = key;
+        if(!metadata) continue;
 
-        VariableItem* item = variable_item_list_add(
-            list,
-            metadata->name,
-            metadata->data.setting.max_value + 1,
-            settings_item_change_callback,
-            item_context);
+        if(metadata->is_action) {
+            // Add all action items to the actions submenu
+            submenu_add_item(
+                app_state->settings_actions_menu,
+                metadata->name,
+                key,
+                settings_action_callback,
+                context);
+            FURI_LOG_D("SettingsSetup", "Added action button: %s", metadata->name);
+        } else {
+            // Handle regular settings
+            VariableItemContext* item_context = malloc(sizeof(VariableItemContext));
+            if(!item_context) {
+                FURI_LOG_E("SettingsSetup", "Failed to allocate memory for item context");
+                continue;
+            }
+            item_context->settings_ui_context = context;
+            item_context->key = key;
 
-        if(item) {
-            uint8_t current_value = settings_get(context->settings, key);
-            variable_item_set_current_value_index(item, current_value);
-            variable_item_set_current_value_text(item, metadata->data.setting.value_names[current_value]);
-            FURI_LOG_D("SettingsSetup", "Added setting item: %s", metadata->name);
+            VariableItem* item = variable_item_list_add(
+                list,
+                metadata->name,
+                metadata->data.setting.max_value + 1,
+                settings_item_change_callback,
+                item_context);
+
+            if(item) {
+                uint8_t current_value = settings_get(context->settings, key);
+                variable_item_set_current_value_index(item, current_value);
+                variable_item_set_current_value_text(item, metadata->data.setting.value_names[current_value]);
+                FURI_LOG_D("SettingsSetup", "Added setting item: %s", metadata->name);
+            }
         }
     }
+}
 
-    // Add action buttons to the actions submenu
-    for(SettingKey key = 0; key < SETTINGS_COUNT; key++) {
-        const SettingMetadata* metadata = settings_get_metadata(key);
-        if(!metadata || !metadata->is_action) continue;
+bool settings_custom_event_callback(void* context, uint32_t event_id) {
+    AppState* app_state = (AppState*)context;
+    SettingKey key = (SettingKey)event_id;
 
-        submenu_add_item(
-            app_state->settings_actions_menu,
-            metadata->name,
-            key,
-            settings_action_callback,
-            context);
-        FURI_LOG_D("SettingsSetup", "Added action button: %s", metadata->name);
+    switch(key) {
+        case SETTING_CLEAR_LOGS:
+            show_confirmation_dialog_ex(
+                app_state,
+                "Clear Logs",
+                "Are you sure you want to clear the logs?\nThis action cannot be undone.",
+                logs_clear_confirmed_callback,
+                logs_clear_cancelled_callback);
+            break;
+
+        case SETTING_CLEAR_NVS:
+            show_confirmation_dialog_ex(
+                app_state,
+                "Clear NVS",
+                "Are you sure you want to clear NVS?\nThis will reset all ESP settings.",
+                nvs_clear_confirmed_callback,
+                nvs_clear_cancelled_callback);
+            break;
+
+        default:
+            return false;
     }
+
+    return true;
 }

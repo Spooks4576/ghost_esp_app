@@ -1,6 +1,6 @@
 # Changelog
 
-## Previous Changes
+## v1.0.1
 - [menu.c] Revamped menu – commands are structured better, grouped logically (scanning, beacon spam, attacks, etc.)
 - [menu.c] Made it easier to add new commands to the menu
 - [menu.c] Cleaned up documentation on menu items and properties
@@ -24,7 +24,7 @@
 - [code organization] More consistent error handling throughout
 - [code organization] Reorganized code for better readability
 
-## Latest Updates (27th October 2024)
+## v1.0.2
 - [ui] Added confirmation dialogs for WebUI-dependent features
 - [ui] Improved settings menu organization with dedicated actions submenu
 - [settings] Added NVS clearing with confirmation dialog
@@ -39,3 +39,41 @@
 - [cleanup] Added proper cleanup sequences for all components
 - [stability] Added safeguards against potential furi_check failures
 - [memory] Added proper initialization of all structure fields
+
+## v1.0.3
+
+### View & Display Improvements 
+- Improved display and structure of confirmation view
+ - Shortened border width around dialog
+ - Improved text alignment
+- Added > to Configuration submenu
+### Settings & Confirmation Additions
+- Added confirmation view to Clear Log Files setting
+ - Added warning about permanent action
+ - Requires confirmation before executing 
+ - Matches WebUI confirmation pattern
+
+- Made confirmation view exit on back press
+ - Fixed callback context handling
+ - Updated view state tracking
+ - Added view state restoration
+ - Fixed memory cleanup
+ - Added callback cleanup
+ - Fixed transitions between dialogs
+
+### Memory Management  
+- Added context cleanup in dialogs
+- Fixed context sharing between views
+- Added null checks 
+- Fixed memory leaks
+- Added state tracking
+
+
+
+## TODO
+- Add Help menu
+- Add optional filtering to UART output to improve readability
+- Improve ESP Connectity check to decrease false negatives
+- Add view log from start/end configuration setting
+- Double check settings get sent to board and get pulled from
+- Improve directory organisation

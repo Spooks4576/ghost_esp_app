@@ -17,11 +17,14 @@
 #include "uart_utils.h"
 #include "settings_storage.h"
 #include "settings_def.h"
+#include "settings_ui.h"
 #include "app_state.h"
 #include "callbacks.h"
 #include "confirmation_view.h"
 #include "utils.h"
 
+// Include the header where settings_custom_event_callback is declared
+#include "settings_ui.h"
 
 int32_t ghost_esp_app(void* p) {
     UNUSED(p);
@@ -104,6 +107,9 @@ int32_t ghost_esp_app(void* p) {
         if(state->text_input) view_dispatcher_add_view(state->view_dispatcher, 6, text_input_get_view(state->text_input));
         if(state->confirmation_view) view_dispatcher_add_view(state->view_dispatcher, 7, confirmation_view_get_view(state->confirmation_view));
         if(state->settings_actions_menu) view_dispatcher_add_view(state->view_dispatcher, 8, submenu_get_view(state->settings_actions_menu));
+
+       view_dispatcher_set_custom_event_callback(state->view_dispatcher, settings_custom_event_callback);
+ 
     }
 
     // Show main menu

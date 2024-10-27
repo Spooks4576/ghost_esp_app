@@ -70,7 +70,7 @@ const SettingMetadata SETTING_METADATA[SETTINGS_COUNT] = {
         .data.action = {
             .name = "Clear Log Files",
             .command = NULL,
-            .callback = &clear_log_files  // Now this should compile
+            .callback = &clear_log_files
         },
         .is_action = true
     },

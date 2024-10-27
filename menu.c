@@ -282,9 +282,18 @@ void submenu_callback(void* context, uint32_t index) {
 bool back_event_callback(void* context) {
     AppState* state = (AppState*)context;
 
-    if(state->current_view == 5) {  // Text box view
+    // Get the current view ID
+    uint32_t current_view = state->current_view;
+
+    // Do not consume the back button event if the current view is the confirmation view
+    if(current_view == 7) {  // 7 is the ID for the confirmation view
+        // Allow the confirmation view's input callback to handle the back button
+        return false;
+    }
+
+    if(current_view == 5) {  // Text box view
         FURI_LOG_D("Ghost ESP", "Stopping Thread");
-        
+
         // Cleanup text buffer
         if(state->textBoxBuffer) {
             free(state->textBoxBuffer);
@@ -294,17 +303,11 @@ bool back_event_callback(void* context) {
             }
             state->buffer_length = 0;
         }
-        
-        if(state->current_view == 8) { // Settings actions menu
-            show_main_menu(state);
-            return true;
-        }
 
         // Only send stop commands if enabled in settings
         if(state->settings.stop_on_back_index) {
             // Send all relevant stop commands
             send_uart_command("stop\n", state);
-
         }
 
         // Close any open files
@@ -316,18 +319,26 @@ bool back_event_callback(void* context) {
 
         // Return to previous view
         switch(state->previous_view) {
-        case 1: show_wifi_menu(state); break;
-        case 2: show_ble_menu(state); break;
-        case 3: show_gps_menu(state); break;
+            case 1: show_wifi_menu(state); break;
+            case 2: show_ble_menu(state); break;
+            case 3: show_gps_menu(state); break;
+            default: show_main_menu(state); break;
         }
-    } else if(state->current_view != 0) {
+        state->current_view = state->previous_view;
+    } else if(current_view == 8) { // Settings actions menu
         show_main_menu(state);
+        state->current_view = 0;
+    } else if(current_view != 0) {
+        show_main_menu(state);
+        state->current_view = 0;
     } else {
         view_dispatcher_stop(state->view_dispatcher);
     }
 
+    // Consume the back button event for all views except the confirmation view
     return true;
 }
+
 
 // Function to show the main menu
 void show_main_menu(AppState* state) {
