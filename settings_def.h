@@ -11,6 +11,8 @@ typedef enum {
     SETTING_ENABLE_RANDOM_BLE_MAC,
     SETTING_STOP_ON_BACK,
     SETTING_REBOOT_ESP,
+    SETTING_CLEAR_LOGS,
+    SETTING_CLEAR_NVS,
     // Add new settings above this line
     SETTINGS_COUNT
 } SettingKey;
@@ -47,21 +49,37 @@ typedef struct {
     uint8_t enable_random_ble_mac_index;
     uint8_t stop_on_back_index;
     uint8_t reboot_esp_index;
+    uint8_t clear_logs_index;
+    uint8_t clear_nvs_index;
 } Settings;
 
-// Setting metadata structure
+// Add this to settings_def.h
 typedef struct {
     const char* name;
-    uint8_t max_value;
-    const char** value_names;
-    const char* uart_command;
+    const char* command;
+    void (*callback)(void* context);  // Function pointer for the action
+} SettingAction;
+
+typedef struct {
+    const char* name;
+    union {
+        struct {
+            uint8_t max_value;
+            const char* const* value_names;
+            const char* uart_command;
+        } setting;
+        SettingAction action;
+    } data;
+    bool is_action;
 } SettingMetadata;
 
+
+
 // Value name arrays
-#define SETTING_VALUE_NAMES_RGB_MODE (const char*[]){"Stealth", "Normal", "Rainbow"}
-#define SETTING_VALUE_NAMES_CHANNEL_HOP (const char*[]){"500ms", "1000ms", "2000ms", "3000ms", "4000ms"}
-#define SETTING_VALUE_NAMES_BOOL (const char*[]){"False", "True"}
-#define SETTING_VALUE_NAMES_ACTION (const char*[]){"Press OK"}
+extern const char* const SETTING_VALUE_NAMES_RGB_MODE[];
+extern const char* const SETTING_VALUE_NAMES_CHANNEL_HOP[];
+extern const char* const SETTING_VALUE_NAMES_BOOL[];
+extern const char* const SETTING_VALUE_NAMES_ACTION[];
 
 // Function declarations
 const SettingMetadata* settings_get_metadata(SettingKey key);
