@@ -75,7 +75,7 @@
 - Improved ESP Connectity check to decrease false negatives
 - Added optional filtering to UART output to improve readability (BETA)
 - Added 'App Info' Button in Settings
-- Misc Changes
+- Misc Changes (mostly to UI)
 
 
 ## TODO
