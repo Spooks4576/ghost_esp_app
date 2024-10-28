@@ -101,7 +101,7 @@ int32_t ghost_esp_app(void* p) {
     state->settings_ui_context.context = state;
     state->settings_actions_menu = submenu_alloc();
     if(state->settings_actions_menu) {
-        submenu_set_header(state->settings_actions_menu, "Settings Actions");
+        submenu_set_header(state->settings_actions_menu, "Settings");
     }
 
     // Initialize settings menu

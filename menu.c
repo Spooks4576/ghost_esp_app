@@ -64,7 +64,7 @@ static const MenuCommand wifi_commands[] = {
         "Evil Portal", "You need to configure\n settings in the WebUI\n for this command.\n\n"},
     {"Stop Portal", "stopportal\n", NULL, NULL, NULL, false, NULL, false, NULL, NULL},
     {"Connect To WiFi", "connect", NULL, NULL, NULL, true, "SSID,Password", false, NULL, NULL},
-    {"Dial Random Video", "dialconnect\n", NULL, NULL, NULL, false, NULL, false, NULL, NULL},
+    {"Cast Random Video", "dialconnect\n", NULL, NULL, NULL, false, NULL, false, NULL, NULL},
     {"Printer Power", "powerprinter\n", NULL, NULL, NULL, false, NULL, true,
         "Printer Power", "You need to configure\n settings in the WebUI\n for this command.\n"},
 };
