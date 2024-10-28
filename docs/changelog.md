@@ -71,10 +71,11 @@
 
 ## v1.0.4
 
-### Improvements
 - Refined confirmation view line breaks for readability
 - Improved ESP Connectity check to decrease false negatives
-- Addded optional filtering to UART output to improve readability (BETA)
+- Added optional filtering to UART output to improve readability (BETA)
+- Added 'App Info' Button in Settings
+- Misc Changes
 
 
 ## TODO
