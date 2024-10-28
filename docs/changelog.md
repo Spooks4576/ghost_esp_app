@@ -69,11 +69,16 @@
 - Added state tracking
 
 
+## v1.0.4
+
+### Improvements
+- Refined confirmation view line breaks for readability
+- Improved ESP Connectity check to decrease false negatives
+- Addded optional filtering to UART output to improve readability (BETA)
+
 
 ## TODO
 - Add Help menu
-- Add optional filtering to UART output to improve readability
-- Improve ESP Connectity check to decrease false negatives
 - Add view log from start/end configuration setting
-- Double check settings get sent to board and get pulled from
+- Settings get sent to board and get pulled from on ESP Check or Init
 - Improve directory organisation

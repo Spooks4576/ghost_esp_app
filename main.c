@@ -42,7 +42,7 @@ int32_t ghost_esp_app(void* p) {
     if (!state) return -1;
     memset(state, 0, sizeof(AppState));  // Zero all memory first
 
-    // Initialize text buffers
+// Initialize text buffers
     state->textBoxBuffer = malloc(1);
     if (state->textBoxBuffer) {
         state->textBoxBuffer[0] = '\0';
@@ -53,6 +53,27 @@ int32_t ghost_esp_app(void* p) {
         memset(state->input_buffer, 0, 32);
     }
 
+
+    // Initialize storage and load settings before UART
+    settings_storage_init();
+    if(settings_storage_load(&state->settings, GHOST_ESP_APP_SETTINGS_FILE) != SETTINGS_OK) {
+        memset(&state->settings, 0, sizeof(Settings));
+        state->settings.stop_on_back_index = 1;
+        settings_storage_save(&state->settings, GHOST_ESP_APP_SETTINGS_FILE);
+    }
+
+    // After initializing text buffers
+
+    state->filter_config = malloc(sizeof(FilterConfig));
+    if(state->filter_config) {
+        state->filter_config->enabled = state->settings.enable_filtering_index;  // Use setting value
+        state->filter_config->show_ble_status = true;
+        state->filter_config->show_wifi_status = true;
+        state->filter_config->show_flipper_devices = true;
+        state->filter_config->show_wifi_networks = true;
+        state->filter_config->strip_ansi_codes = true;
+        state->filter_config->add_prefixes = true;
+    }
     // Initialize UI components
     state->view_dispatcher = view_dispatcher_alloc();
     state->main_menu = main_menu_alloc();
@@ -71,13 +92,6 @@ int32_t ghost_esp_app(void* p) {
     if(state->gps_menu) submenu_set_header(state->gps_menu, "Select a GPS Utility");
     if(state->text_input) text_input_set_header_text(state->text_input, "Enter Your Text");
 
-    // Initialize storage and load settings before UART
-    settings_storage_init();
-    if(settings_storage_load(&state->settings, GHOST_ESP_APP_SETTINGS_FILE) != SETTINGS_OK) {
-        memset(&state->settings, 0, sizeof(Settings));
-        state->settings.stop_on_back_index = 1;
-        settings_storage_save(&state->settings, GHOST_ESP_APP_SETTINGS_FILE);
-    }
 
     // Set up settings UI context
     state->settings_ui_context.settings = &state->settings;
@@ -197,7 +211,11 @@ int32_t ghost_esp_app(void* p) {
         free(state->textBoxBuffer);
         state->textBoxBuffer = NULL;
     }
-
+    // Add filter config cleanup
+    if(state->filter_config) {
+        free(state->filter_config);
+        state->filter_config = NULL;
+    }
     // Final state cleanup
     free(state);
 

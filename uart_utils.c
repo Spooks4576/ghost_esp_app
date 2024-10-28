@@ -8,60 +8,422 @@
 
 #define WORKER_ALL_RX_EVENTS (WorkerEvtStop | WorkerEvtRxDone | WorkerEvtPcapDone)
 
+static bool is_ap_list_start(const char* line) {
+    return strstr(line, "Found") != NULL && strstr(line, "access points:") != NULL;
+}
+
+static bool is_ap_list_entry(const char* line) {
+    return strstr(line, "SSID:") != NULL && strstr(line, "BSSID:") != NULL && 
+           strstr(line, "RSSI:") != NULL && strstr(line, "Company:") != NULL;
+}
+
+static bool should_filter_line(const char* line) {
+    if(!line || strlen(line) == 0) return true;
+    
+    static bool in_ap_list = false;
+    static int ap_count = 0;
+    
+    // If line contains multiple null characters or is corrupted, filter it
+    bool has_corruption = false;
+    size_t nulls = 0;
+    for(size_t i = 0; i < strlen(line); i++) {
+        if(line[i] == '\0') nulls++;
+        if(nulls > 1) {
+            has_corruption = true;
+            break;
+        }
+    }
+    if(has_corruption) return true;
+    
+    // Check if we're starting an AP list
+    if(is_ap_list_start(line)) {
+        in_ap_list = true;
+        ap_count = 0;
+        return false;  // Keep the header line
+    }
+    
+    // If we're in an AP list, handle entries
+    if(in_ap_list) {
+        if(is_ap_list_entry(line)) {
+            ap_count++;
+            return false;  // Keep all AP entries
+        } else if(strstr(line, "WiFiManager:") == NULL) {
+            // Only exit AP list mode if this isn't another WiFiManager line
+            in_ap_list = false;
+        }
+    }
+
+    // Always keep these patterns (expanded list)
+    const char* keep_patterns[] = {
+        "WiFiManager:",
+        "BLE_MANAGER:",
+        "ESP32",
+        "WiFi scan",
+        "scan started",
+        "scan stopped",
+        "monitor mode",
+        "AP count",
+        "Added station",
+        "HTTP server",
+        "DHCP server",
+        "IP Address:",
+        "AP IP Address:",
+        "ready to scan",
+        NULL
+    };
+
+    for(int i = 0; keep_patterns[i]; i++) {
+        if(strstr(line, keep_patterns[i])) return false;
+    }
+
+    // Filter out known noise (expanded list)
+    const char* filter_patterns[] = {
+        "No deauth transmission",
+        "wifi:flush txq",
+        "wifi:stop sw txq",
+        "wifi:lmac stop hw",
+        "wifi:enable tsf",
+        "wifi:Total power save buffer",
+        "wifi:Init max length of beacon",
+        "wifi:new:",
+        "wifi:station:",
+        "wifi:<ba-",
+        "own_addr_type=",
+        "duration=forever",
+        NULL
+    };
+
+    for(int i = 0; filter_patterns[i]; i++) {
+        if(strstr(line, filter_patterns[i])) return true;
+    }
+
+    return false;  // Keep by default
+}
+
+static void clean_text(char* str) {
+    if(!str) return;
+    
+    // First pass: normalize spaces and remove artifacts
+    char* write = str;
+    char* read = str;
+    bool last_was_space = true;  // Start true to trim leading spaces
+    
+    while(*read) {
+        // Skip single-character splits
+        if(*read == '\n' && (*(read+1) != '\0' && !isspace((unsigned char)*(read+1)))) {
+            read++;
+            continue;
+        }
+        
+        // Normalize spaces
+        if(isspace((unsigned char)*read)) {
+            if(!last_was_space) {
+                *write++ = ' ';
+                last_was_space = true;
+            }
+        } else {
+            *write++ = *read;
+            last_was_space = false;
+        }
+        read++;
+    }
+    *write = '\0';
+    
+    // Remove trailing space
+    if(write > str && *(write-1) == ' ') {
+        *(write-1) = '\0';
+    }
+}
+
+static void strip_ansi_codes(const char* input, char* output) {
+    size_t j = 0;
+    size_t input_len = strlen(input);
+    bool in_escape = false;
+    bool in_timestamp = false;
+    char temp[RX_BUF_SIZE] = {0};
+    size_t temp_idx = 0;
+    
+    for(size_t i = 0; i < input_len; i++) {
+        unsigned char c = (unsigned char)input[i];
+        
+        // Handle escape sequences
+        if(c == '\x1b' || (c == '[' && i > 0 && input[i-1] == '\x1b')) {
+            in_escape = true;
+            continue;
+        }
+        
+        if(in_escape) {
+            if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
+                in_escape = false;
+            }
+            continue;
+        }
+        
+        // Handle timestamps (e.g., "(1234567)")
+        if(c == '(' && i + 1 < input_len && isdigit((unsigned char)input[i + 1])) {
+            in_timestamp = true;
+            continue;
+        }
+        if(in_timestamp) {
+            if(c == ')') {
+                in_timestamp = false;
+            }
+            continue;
+        }
+        
+        // Skip any remaining color code fragments
+        if(c == ';' && i + 2 < input_len && isdigit((unsigned char)input[i + 1]) && 
+           input[i + 2] == 'm') {
+            i += 2;
+            continue;
+        }
+        
+        // Collect character into temporary buffer
+        temp[temp_idx++] = c;
+        if(temp_idx >= RX_BUF_SIZE - 1) {
+            clean_text(temp);
+            strncpy(output + j, temp, RX_BUF_SIZE - j - 1);
+            j += strlen(temp);
+            temp_idx = 0;
+        }
+    }
+    
+    // Handle any remaining characters
+    if(temp_idx > 0) {
+        temp[temp_idx] = '\0';
+        clean_text(temp);
+        strncpy(output + j, temp, RX_BUF_SIZE - j - 1);
+    }
+    
+    output[RX_BUF_SIZE - 1] = '\0';
+    clean_text(output);
+}
+
+static bool format_line(const char* input, char* output, FilterConfig* config) {
+    if(!input || !output || !config) return false;
+    
+    if(!config->enabled) {
+        strncpy(output, input, RX_BUF_SIZE - 1);
+        output[RX_BUF_SIZE - 1] = '\0';
+        return true;
+    }
+
+    char* temp = malloc(RX_BUF_SIZE);
+    if(!temp) return false;
+    
+    // Initial cleanup
+    strncpy(temp, input, RX_BUF_SIZE - 1);
+    temp[RX_BUF_SIZE - 1] = '\0';
+
+    // Remove ANSI codes and clean up text
+    if(config->strip_ansi_codes) {
+        char* stripped = malloc(RX_BUF_SIZE);
+        if(stripped) {
+            strip_ansi_codes(temp, stripped);
+            strncpy(temp, stripped, RX_BUF_SIZE - 1);
+            free(stripped);
+        }
+    }
+
+    // Remove additional artifacts and normalize
+    clean_text(temp);
+
+    // Fix common split patterns
+    char* fixed = temp;
+    while(*fixed) {
+        if(strncmp(fixed, "Wi Fi", 5) == 0) {
+            memmove(fixed + 4, fixed + 5, strlen(fixed + 5) + 1);
+            memcpy(fixed, "WiFi", 4);
+        }
+        fixed++;
+    }
+
+    // Remove any remaining timestamps and ID numbers at start of lines
+    char* start = temp;
+    while(*start) {
+        if(isdigit((unsigned char)*start) && strstr(start, "]")) {
+            char* end = strstr(start, "]");
+            if(end) {
+                memmove(start, end + 1, strlen(end + 1) + 1);
+                continue;
+            }
+        }
+        break;
+    }
+
+    bool keep_line = !should_filter_line(start);
+    
+    if(keep_line) {
+        const char* prefix = "";
+        if(config->add_prefixes) {
+            if(strstr(start, "WiFi") || strstr(start, "AP_MANAGER") || 
+               strstr(start, "SSID:") || strstr(start, "BSSID:")) {
+                prefix = "[WIFI] ";
+            } else if(strstr(start, "BLE")) {
+                prefix = "[BLE] ";
+            } else if(strstr(start, "Found Flipper")) {
+                prefix = "[FLIPPER] ";
+            }
+        }
+
+        // Add prefix only if it's not already there
+        if(strlen(prefix) > 0 && strncmp(start, prefix, strlen(prefix)) != 0) {
+            snprintf(output, RX_BUF_SIZE - 1, "%s%s", prefix, start);
+        } else {
+            strncpy(output, start, RX_BUF_SIZE - 1);
+        }
+        output[RX_BUF_SIZE - 1] = '\0';
+        clean_text(output);
+    }
+    
+    free(temp);
+    return keep_line;
+}
+
 void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
     AppState *state = (AppState *)context;
     const size_t MAX_BUFFER_SIZE = 2 * 1024;
 
     if(!state || !buf || len == 0) return;
 
-    // Ensure proper null termination
-    if(len > 0) {
-        buf[len] = '\0';
-    }
+    // Ensure proper null termination of input
+    if(len >= RX_BUF_SIZE) len = RX_BUF_SIZE - 1;
+    buf[len] = '\0';
 
-    size_t new_total_len = state->buffer_length + len + 1;
+    // Check if filtering is configured and enabled
+    if(!state->filter_config || !state->filter_config->enabled) {
+        // No filtering or filtering disabled - use original behavior
+        size_t new_total_len = state->buffer_length + len + 1;
 
-    // Handle buffer overflow
-    if(new_total_len > MAX_BUFFER_SIZE) {
-        // Keep last portion of existing content
-        size_t keep_size = MAX_BUFFER_SIZE / 2;
-        if(state->textBoxBuffer && state->buffer_length > keep_size) {
-            memmove(state->textBoxBuffer, 
-                   state->textBoxBuffer + state->buffer_length - keep_size,
-                   keep_size);
-            state->buffer_length = keep_size;
-            new_total_len = keep_size + len + 1;
-        } else {
-            // If current buffer is small, just clear it
-            free(state->textBoxBuffer);
-            state->textBoxBuffer = NULL;
-            state->buffer_length = 0;
-            new_total_len = len + 1;
+        // Handle buffer overflow (original logic)
+        if(new_total_len > MAX_BUFFER_SIZE) {
+            size_t keep_size = MAX_BUFFER_SIZE / 2;
+            if(state->textBoxBuffer && state->buffer_length > keep_size) {
+                memmove(state->textBoxBuffer, 
+                       state->textBoxBuffer + state->buffer_length - keep_size,
+                       keep_size);
+                state->buffer_length = keep_size;
+                new_total_len = keep_size + len + 1;
+            } else {
+                free(state->textBoxBuffer);
+                state->textBoxBuffer = NULL;
+                state->buffer_length = 0;
+                new_total_len = len + 1;
+            }
         }
-    }
 
-    // Allocate or reallocate buffer
-    char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
-    if(!new_buffer) {
-        FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
+        // Allocate or reallocate buffer (original logic)
+        char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
+        if(!new_buffer) {
+            FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
+            return;
+        }
+
+        // Copy new data
+        memcpy(new_buffer + state->buffer_length, buf, len);
+        new_buffer[new_total_len - 1] = '\0';
+        
+        state->textBoxBuffer = new_buffer;
+        state->buffer_length = new_total_len - 1;
+
+        // Update text box and scroll to end
+        text_box_set_text(state->text_box, state->textBoxBuffer);
+        text_box_set_focus(state->text_box, TextBoxFocusEnd);
+
+        // Write to log file if enabled
+        if(state->uart_context->storageContext->log_file) {
+            storage_file_write(state->uart_context->storageContext->log_file, buf, len);
+        }
         return;
     }
 
-    // Copy new data
-    memcpy(new_buffer + state->buffer_length, buf, len);
-    new_buffer[new_total_len - 1] = '\0';
-    
-    state->textBoxBuffer = new_buffer;
-    state->buffer_length = new_total_len - 1;
+    // Filtering is enabled - process line by line
+    char* line_start = (char*)buf;
+    char* current = line_start;
+    char* filtered_buffer = malloc(MAX_BUFFER_SIZE);
+    size_t filtered_len = 0;
 
-    // Update text box and scroll to end
-    text_box_set_text(state->text_box, state->textBoxBuffer);
-    text_box_set_focus(state->text_box, TextBoxFocusEnd);
-
-    // Write to log file if enabled
-    if(state->uart_context->storageContext->log_file) {
-        storage_file_write(state->uart_context->storageContext->log_file, buf, len);
+    if(!filtered_buffer) {
+        FURI_LOG_E("UART", "Failed to allocate filter buffer");
+        return;
     }
+
+    filtered_buffer[0] = '\0';
+
+    // Process each line through the filter
+    while(current < (char*)buf + len) {
+        if(*current == '\n' || current == (char*)buf + len - 1) {
+            size_t line_len = current - line_start + 1;
+            char* line_buf = malloc(line_len + 1);
+            
+            if(line_buf) {
+                memcpy(line_buf, line_start, line_len);
+                line_buf[line_len] = '\0';
+
+                char output_line[RX_BUF_SIZE];
+                if(format_line(line_buf, output_line, state->filter_config)) {
+                    size_t output_len = strlen(output_line);
+                    if(filtered_len + output_len < MAX_BUFFER_SIZE - 2) {
+                        strcat(filtered_buffer, output_line);
+                        strcat(filtered_buffer, "\n");
+                        filtered_len += output_len + 1;
+                    }
+                }
+                free(line_buf);
+            }
+            line_start = current + 1;
+        }
+        current++;
+    }
+
+    // Only proceed if we have filtered content
+    if(filtered_len > 0) {
+        size_t new_total_len = state->buffer_length + filtered_len + 1;
+
+        // Handle buffer overflow
+        if(new_total_len > MAX_BUFFER_SIZE) {
+            size_t keep_size = MAX_BUFFER_SIZE / 2;
+            if(state->textBoxBuffer && state->buffer_length > keep_size) {
+                memmove(state->textBoxBuffer, 
+                       state->textBoxBuffer + state->buffer_length - keep_size,
+                       keep_size);
+                state->buffer_length = keep_size;
+                new_total_len = keep_size + filtered_len + 1;
+            } else {
+                free(state->textBoxBuffer);
+                state->textBoxBuffer = NULL;
+                state->buffer_length = 0;
+                new_total_len = filtered_len + 1;
+            }
+        }
+
+        // Allocate or reallocate buffer
+        char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
+        if(new_buffer) {
+            if(state->buffer_length == 0) {
+                new_buffer[0] = '\0';
+            }
+            strcat(new_buffer, filtered_buffer);
+            state->textBoxBuffer = new_buffer;
+            state->buffer_length = strlen(new_buffer);
+
+            // Update text box and scroll to end
+            text_box_set_text(state->text_box, state->textBoxBuffer);
+            text_box_set_focus(state->text_box, TextBoxFocusEnd);
+
+            // Write to log file if enabled
+            if(state->uart_context->storageContext->log_file) {
+                storage_file_write(
+                    state->uart_context->storageContext->log_file, 
+                    filtered_buffer, 
+                    filtered_len);
+            }
+        } else {
+            FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
+        }
+    }
+
+    free(filtered_buffer);
 }
 
 // UART receive callback function
@@ -268,28 +630,83 @@ void uart_receive_data(
 }
 
 bool uart_is_esp_connected(UartContext* uart) {
-    if(!uart || !uart->serial_handle) return false;
-
-    // Clear any existing data
-    if(uart->state && uart->state->textBoxBuffer) {
-        free(uart->state->textBoxBuffer);
-        uart->state->textBoxBuffer = malloc(1);
-        uart->state->textBoxBuffer[0] = '\0';
-        uart->state->buffer_length = 0;
+    FURI_LOG_D("UART", "Checking ESP connection...");
+    
+    // Basic validation
+    if(!uart) {
+        FURI_LOG_E("UART", "UART context is NULL");
+        return false;
+    }
+    if(!uart->serial_handle) {
+        FURI_LOG_E("UART", "UART serial handle is NULL");
+        return false;
+    }
+    if(!uart->state) {
+        FURI_LOG_E("UART", "UART state is NULL");
+        return false;
     }
 
-    // Send a simple test command
+    // Log initial state
+    FURI_LOG_D("UART", "Initial buffer state - length: %d, buffer: %p", 
+               uart->state->buffer_length,
+               uart->state->textBoxBuffer);
+
+    // Save and disable filtering
+    FilterConfig* saved_config = uart->state->filter_config;
+    uart->state->filter_config = NULL;
+    FURI_LOG_D("UART", "Temporarily disabled filtering");
+
+    // Clear and initialize buffer
+    if(uart->state->textBoxBuffer) {
+        FURI_LOG_D("UART", "Freeing existing buffer");
+        free(uart->state->textBoxBuffer);
+    }
+    uart->state->textBoxBuffer = malloc(1);
+    if(!uart->state->textBoxBuffer) {
+        FURI_LOG_E("UART", "Failed to allocate buffer");
+        uart->state->filter_config = saved_config;
+        return false;
+    }
+    uart->state->textBoxBuffer[0] = '\0';
+    uart->state->buffer_length = 0;
+    FURI_LOG_D("UART", "Initialized new buffer");
+
+    // Send test command
     const char* test_cmd = "info\n";
     uart_send(uart, (uint8_t*)test_cmd, strlen(test_cmd));
+    FURI_LOG_D("UART", "Sent info command (%d bytes)", strlen(test_cmd));
 
-    // Wait for response
+    // Wait for response with more detailed logging
+    bool connected = false;
     uint32_t start_time = furi_get_tick();
+    uint32_t check_count = 0;
+    
     while(furi_get_tick() - start_time < ESP_CHECK_TIMEOUT_MS) {
-        if(uart->state && uart->state->textBoxBuffer && uart->state->buffer_length > 0) {
-            return true;
+        check_count++;
+        if(uart->state->textBoxBuffer && uart->state->buffer_length > 0) {
+            FURI_LOG_D("UART", "Received response - length: %d, content: %.20s...", 
+                      uart->state->buffer_length,
+                      uart->state->textBoxBuffer);
+            connected = true;
+            break;
+        }
+        if(check_count % 10 == 0) { // Log every 100ms
+            FURI_LOG_D("UART", "Waiting for response... Time elapsed: %lums", 
+                      furi_get_tick() - start_time);
         }
         furi_delay_ms(10);
     }
 
-    return false;
+    // Log timeout if it occurs
+    if(!connected) {
+        FURI_LOG_W("UART", "Connection check timed out after %lums", 
+                   furi_get_tick() - start_time);
+    }
+
+    // Restore filtering
+    uart->state->filter_config = saved_config;
+    FURI_LOG_D("UART", "Restored filtering configuration");
+
+    FURI_LOG_I("UART", "ESP connection check result: %s", connected ? "Connected" : "Not connected");
+    return connected;
 }

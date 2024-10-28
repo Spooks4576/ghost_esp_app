@@ -10,10 +10,11 @@ typedef enum {
     SETTING_ENABLE_CHANNEL_HOPPING,
     SETTING_ENABLE_RANDOM_BLE_MAC,
     SETTING_STOP_ON_BACK,
+    SETTING_ENABLE_FILTERING,
+    SETTING_SHOW_INFO,
     SETTING_REBOOT_ESP,
     SETTING_CLEAR_LOGS,
     SETTING_CLEAR_NVS,
-    // Add new settings above this line
     SETTINGS_COUNT
 } SettingKey;
 
@@ -48,6 +49,7 @@ typedef struct {
     uint8_t enable_channel_hopping_index;
     uint8_t enable_random_ble_mac_index;
     uint8_t stop_on_back_index;
+    uint8_t enable_filtering_index;
     uint8_t reboot_esp_index;
     uint8_t clear_logs_index;
     uint8_t clear_nvs_index;

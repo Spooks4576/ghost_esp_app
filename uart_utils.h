@@ -22,6 +22,8 @@
 #define GHOST_ESP_APP_SETTINGS_FILE   "/ext/apps_data/ghost_esp/settings.ini"
 #define ESP_CHECK_TIMEOUT_MS 100
 
+
+
 typedef enum {
     WorkerEvtStop = (1 << 0),
     WorkerEvtRxDone = (1 << 1),
@@ -45,6 +47,8 @@ typedef struct UartContext {
     AppState* state;
     UartStorageContext* storageContext;
 } UartContext;
+
+
 
 // Function prototypes
 UartContext* uart_init(AppState* state);
