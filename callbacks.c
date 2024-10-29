@@ -203,7 +203,7 @@ void show_app_info(void* context) {
     FURI_LOG_D("AppInfo", "Show app info called, context: %p", app);
     
     const char* info_text = 
-        "Ghost ESP v1.0.4\n\n"
+        "Ghost ESP v1.0.5\n\n"
         "Created by: Spooky\n"
         "Special Thanks:\n"
         "- Jay Candel\n"

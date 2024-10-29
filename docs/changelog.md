@@ -78,6 +78,15 @@
 - Misc Changes (mostly to UI)
 
 
+## v1.0.5
+- Commands will silently fail if UART isn't working rather than crashing
+- Fixed double-free memory issue by removing stream buffer cleanup from the worker thread
+- Reorganized initialization order
+- UART initialization happens in background
+- Serial operations don't block app startup
+- Optimized storage initialization by deferring file operations until needed
+- Improved directory creation efficiency in storage handling
+
 ## TODO
 - Add Help menu
 - Add view log from start/end configuration setting
