@@ -196,3 +196,80 @@ void nvs_clear_cancelled_callback(void* context) {
         app_state->current_view = prev_view;  // Add this line
     }
 }
+void show_app_info(void* context) {
+    SettingsUIContext* settings_context = (SettingsUIContext*)context;
+    AppState* app = (AppState*)settings_context->context;
+    
+    FURI_LOG_D("AppInfo", "Show app info called, context: %p", app);
+    
+    const char* info_text = 
+        "Ghost ESP v1.0.5\n\n"
+        "Created by: Spooky\n"
+        "Special Thanks:\n"
+        "- Jay Candel\n"
+        "Built with <3";
+        
+    if(app && app->confirmation_view) {
+        // Create a new context for the confirmation dialog
+        SettingsConfirmContext* confirm_ctx = malloc(sizeof(SettingsConfirmContext));
+        if(!confirm_ctx) {
+            FURI_LOG_E("AppInfo", "Failed to allocate confirmation context");
+            return;
+        }
+        confirm_ctx->state = app;
+        
+        // Save current view before switching
+        app->previous_view = app->current_view;
+        FURI_LOG_D("AppInfo", "Saved previous view: %d", app->previous_view);
+
+        confirmation_view_set_header(app->confirmation_view, "App Info");
+        confirmation_view_set_text(app->confirmation_view, info_text);
+        
+        // Set up callbacks with proper context
+        confirmation_view_set_ok_callback(
+            app->confirmation_view, 
+            app_info_ok_callback,
+            confirm_ctx);
+        confirmation_view_set_cancel_callback(
+            app->confirmation_view, 
+            app_info_cancel_callback,
+            confirm_ctx);
+        
+        // Switch to confirmation view
+        FURI_LOG_D("AppInfo", "Switching to confirmation view");
+        view_dispatcher_switch_to_view(app->view_dispatcher, 7);  // 7 is confirmation view
+        app->current_view = 7;
+    } else {
+        FURI_LOG_E("AppInfo", "Invalid app state or confirmation view");
+    }
+}
+
+// Update callback functions to use proper context
+void app_info_ok_callback(void* context) {
+    SettingsConfirmContext* ctx = (SettingsConfirmContext*)context;
+    if(!ctx || !ctx->state) {
+        FURI_LOG_E("AppInfo", "Invalid callback context");
+        return;
+    }
+    
+    AppState* app_state = ctx->state;
+    uint32_t prev_view = app_state->previous_view;
+    
+    FURI_LOG_D("AppInfo", "OK callback, returning to view: %lu", prev_view);
+    
+    // Reset callbacks
+    confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
+    confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
+    
+    // Free the context
+    free(ctx);
+    
+    // Return to previous view
+    view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
+    app_state->current_view = prev_view;
+}
+
+void app_info_cancel_callback(void* context) {
+    // Use same callback as OK since both just return to previous view
+    app_info_ok_callback(context);
+}

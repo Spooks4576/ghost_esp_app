@@ -69,11 +69,26 @@
 - Added state tracking
 
 
+## v1.0.4
+
+- Refined confirmation view line breaks for readability
+- Improved ESP Connectity check to decrease false negatives
+- Added optional filtering to UART output to improve readability (BETA)
+- Added 'App Info' Button in Settings
+- Misc Changes (mostly to UI)
+
+
+## v1.0.5
+- Commands will silently fail if UART isn't working rather than crashing
+- Fixed double-free memory issue by removing stream buffer cleanup from the worker thread
+- Reorganized initialization order
+- UART initialization happens in background
+- Serial operations don't block app startup
+- Optimized storage initialization by deferring file operations until needed
+- Improved directory creation efficiency in storage handling
 
 ## TODO
 - Add Help menu
-- Add optional filtering to UART output to improve readability
-- Improve ESP Connectity check to decrease false negatives
 - Add view log from start/end configuration setting
-- Double check settings get sent to board and get pulled from
+- Settings get sent to board and get pulled from on ESP Check or Init
 - Improve directory organisation

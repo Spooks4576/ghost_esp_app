@@ -125,6 +125,33 @@ bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* conte
             }
             break;
 
+        case SETTING_ENABLE_FILTERING:
+            if(settings->enable_filtering_index != value) {
+                settings->enable_filtering_index = value;
+                if(context) {
+                    SettingsUIContext* settings_context = (SettingsUIContext*)context;
+                    if(settings_context->context) {
+                        AppState* app_state = (AppState*)settings_context->context;
+                        if(app_state->filter_config) {
+                            app_state->filter_config->enabled = value;
+                        }
+                    }
+                }
+                changed = true;
+            }
+            break;
+        case SETTING_SHOW_INFO:
+            if(value == 0) { // Execute on press
+                SettingsUIContext* settings_context = (SettingsUIContext*)context;
+                if(settings_context && settings_context->context) {
+                    FURI_LOG_I("SettingsSet", "Posting custom event to show app info dialog");
+                    AppState* app_state = (AppState*)settings_context->context;
+                    // Post a custom event with the key
+                    view_dispatcher_send_custom_event(app_state->view_dispatcher, key);
+                }
+            }
+            break;
+
         case SETTING_REBOOT_ESP:
             if(value == 0) { // Execute on press
                 SettingsUIContext* settings_context = (SettingsUIContext*)context;
@@ -179,6 +206,9 @@ uint8_t settings_get(const Settings* settings, SettingKey key) {
 
         case SETTING_STOP_ON_BACK:
             return settings->stop_on_back_index;
+            
+        case SETTING_ENABLE_FILTERING:
+            return settings->enable_filtering_index;
 
         case SETTING_REBOOT_ESP:
         case SETTING_CLEAR_LOGS:
@@ -325,7 +355,7 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
             show_confirmation_dialog_ex(
                 app_state,
                 "Clear Logs",
-                "Are you sure you want to clear the logs?\nThis action cannot be undone.",
+                "Are you sure you want\n to clear the logs?\nThis action cannot be undone.",
                 logs_clear_confirmed_callback,
                 logs_clear_cancelled_callback);
             break;
@@ -334,10 +364,41 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
             show_confirmation_dialog_ex(
                 app_state,
                 "Clear NVS",
-                "Are you sure you want to clear NVS?\nThis will reset all ESP settings.",
+                "Are you sure you want\n to clear NVS?\nThis will reset all ESP settings.",
                 nvs_clear_confirmed_callback,
                 nvs_clear_cancelled_callback);
             break;
+
+        case SETTING_SHOW_INFO: {
+            // Create a new context for the confirmation dialog
+            SettingsConfirmContext* confirm_ctx = malloc(sizeof(SettingsConfirmContext));
+            if(!confirm_ctx) return false;
+            confirm_ctx->state = app_state;
+
+            const char* info_text = 
+                "Created by: Spooky\n"
+                "Updated by: Jay Candel\n"
+                "Built with <3";
+
+            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.0.5");
+            confirmation_view_set_text(app_state->confirmation_view, info_text);
+            
+            // Save current view before switching
+            app_state->previous_view = app_state->current_view;
+            
+            confirmation_view_set_ok_callback(
+                app_state->confirmation_view, 
+                app_info_ok_callback,
+                confirm_ctx);
+            confirmation_view_set_cancel_callback(
+                app_state->confirmation_view, 
+                app_info_cancel_callback,
+                confirm_ctx);
+
+            view_dispatcher_switch_to_view(app_state->view_dispatcher, 7);
+            app_state->current_view = 7;
+            break;
+        }
 
         default:
             return false;

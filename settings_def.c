@@ -1,7 +1,7 @@
 // settings_def.c
 #include "settings_def.h"
 #include <stddef.h>
-
+#include "callbacks.h"
 // Define the constant arrays
 const char* const SETTING_VALUE_NAMES_RGB_MODE[] = {"Stealth", "Normal", "Rainbow"};
 const char* const SETTING_VALUE_NAMES_CHANNEL_HOP[] = {"500ms", "1000ms", "2000ms", "3000ms", "4000ms"};
@@ -48,13 +48,31 @@ const SettingMetadata SETTING_METADATA[SETTINGS_COUNT] = {
         .is_action = false
     },
     [SETTING_STOP_ON_BACK] = {
-        .name = "Stop On Back",
+        .name = "Send Stop On Back",
         .data.setting = {
             .max_value = 1,
             .value_names = SETTING_VALUE_NAMES_BOOL,
             .uart_command = NULL
         },
         .is_action = false
+    },
+    [SETTING_ENABLE_FILTERING] = {
+        .name = "(BETA) Enable UART Filtering",
+        .data.setting = {
+            .max_value = 1,
+            .value_names = SETTING_VALUE_NAMES_BOOL,
+            .uart_command = NULL  // No UART command needed since this is handled locally
+        },
+        .is_action = false
+    },
+    [SETTING_SHOW_INFO] = {
+    .name = "App Info",
+    .data.action = {
+        .name = "Show Info",
+        .command = NULL,
+        .callback = &show_app_info
+    },
+    .is_action = true
     },
     [SETTING_REBOOT_ESP] = {
         .name = "Reboot ESP",

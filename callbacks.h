@@ -23,3 +23,6 @@ void logs_clear_confirmed_callback(void* context);
 void logs_clear_cancelled_callback(void* context);
 void nvs_clear_confirmed_callback(void* context);
 void nvs_clear_cancelled_callback(void* context);
+void show_app_info(void* context);
+void app_info_ok_callback(void* context);
+void app_info_cancel_callback(void* context);

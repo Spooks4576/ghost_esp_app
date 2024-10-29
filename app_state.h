@@ -11,6 +11,15 @@
 #include "app_types.h"
 #include "settings_ui_types.h"
 
+typedef struct {
+    bool enabled;  // Master switch for filtering
+    bool show_ble_status;
+    bool show_wifi_status;
+    bool show_flipper_devices;
+    bool show_wifi_networks;
+    bool strip_ansi_codes;
+    bool add_prefixes;  // Whether to add [BLE], [WIFI] etc prefixes
+} FilterConfig;
 
 struct AppState {
     // Views
@@ -26,6 +35,7 @@ struct AppState {
 
     // UART Context
     UartContext* uart_context;
+    FilterConfig* filter_config;
 
     // Settings
     Settings settings;

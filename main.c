@@ -26,23 +26,44 @@
 // Include the header where settings_custom_event_callback is declared
 #include "settings_ui.h"
 
+#define UART_INIT_STACK_SIZE 2048
+
+static int32_t init_uart_task(void* context) {
+    AppState* state = context;
+    
+    // Add some delay to let system stabilize
+    furi_delay_ms(50);
+    
+    state->uart_context = uart_init(state);
+    if (state->uart_context) {
+        FURI_LOG_I("Ghost_ESP", "UART initialized successfully");
+    } else {
+        FURI_LOG_E("Ghost_ESP", "UART initialization failed");
+    }
+    return 0;
+}
+
+
 int32_t ghost_esp_app(void* p) {
     UNUSED(p);
 
-    uint8_t attempts = 0;
+    // Quick power check and initialization
     bool otg_was_enabled = furi_hal_power_is_otg_enabled();
-    while(!furi_hal_power_is_otg_enabled() && attempts++ < 5) {
-        furi_hal_power_enable_otg();
-        furi_delay_ms(10);
+    if(!otg_was_enabled) {
+        uint8_t attempts = 0;
+        while(!furi_hal_power_is_otg_enabled() && attempts++ < 3) {
+            furi_hal_power_enable_otg();
+            furi_delay_ms(10);
+        }
+        furi_delay_ms(50);
     }
-    furi_delay_ms(200);
 
-    // Set up UI
+    // Set up bare minimum UI state
     AppState* state = malloc(sizeof(AppState));
     if (!state) return -1;
     memset(state, 0, sizeof(AppState));  // Zero all memory first
 
-    // Initialize text buffers
+    // Initialize essential text buffers with minimal size
     state->textBoxBuffer = malloc(1);
     if (state->textBoxBuffer) {
         state->textBoxBuffer[0] = '\0';
@@ -53,9 +74,20 @@ int32_t ghost_esp_app(void* p) {
         memset(state->input_buffer, 0, 32);
     }
 
-    // Initialize UI components
+    // Initialize UI components - core components first
     state->view_dispatcher = view_dispatcher_alloc();
     state->main_menu = main_menu_alloc();
+    if (!state->view_dispatcher || !state->main_menu) {
+        // Clean up and exit if core components fail
+        if (state->view_dispatcher) view_dispatcher_free(state->view_dispatcher);
+        if (state->main_menu) main_menu_free(state->main_menu);
+        free(state->textBoxBuffer);
+        free(state->input_buffer);
+        free(state);
+        return -1;
+    }
+
+    // Allocate remaining UI components
     state->wifi_menu = submenu_alloc();
     state->ble_menu = submenu_alloc();
     state->gps_menu = submenu_alloc();
@@ -63,20 +95,34 @@ int32_t ghost_esp_app(void* p) {
     state->settings_menu = variable_item_list_alloc();
     state->text_input = text_input_alloc();
     state->confirmation_view = confirmation_view_alloc();
+    state->settings_actions_menu = submenu_alloc();
 
-    // Set headers after allocation
+    // Set headers - only for successfully allocated components
     if(state->main_menu) main_menu_set_header(state->main_menu, "Select a Utility");
     if(state->wifi_menu) submenu_set_header(state->wifi_menu, "Select a Wifi Utility");
     if(state->ble_menu) submenu_set_header(state->ble_menu, "Select a Bluetooth Utility");
     if(state->gps_menu) submenu_set_header(state->gps_menu, "Select a GPS Utility");
     if(state->text_input) text_input_set_header_text(state->text_input, "Enter Your Text");
+    if(state->settings_actions_menu) submenu_set_header(state->settings_actions_menu, "Settings");
 
-    // Initialize storage and load settings before UART
+    // Initialize settings and configuration early
     settings_storage_init();
     if(settings_storage_load(&state->settings, GHOST_ESP_APP_SETTINGS_FILE) != SETTINGS_OK) {
         memset(&state->settings, 0, sizeof(Settings));
         state->settings.stop_on_back_index = 1;
         settings_storage_save(&state->settings, GHOST_ESP_APP_SETTINGS_FILE);
+    }
+
+    // Initialize filter config
+    state->filter_config = malloc(sizeof(FilterConfig));
+    if(state->filter_config) {
+        state->filter_config->enabled = state->settings.enable_filtering_index;
+        state->filter_config->show_ble_status = true;
+        state->filter_config->show_wifi_status = true;
+        state->filter_config->show_flipper_devices = true;
+        state->filter_config->show_wifi_networks = true;
+        state->filter_config->strip_ansi_codes = true;
+        state->filter_config->add_prefixes = true;
     }
 
     // Set up settings UI context
@@ -85,18 +131,18 @@ int32_t ghost_esp_app(void* p) {
     state->settings_ui_context.switch_to_view = NULL;
     state->settings_ui_context.show_confirmation_view = show_confirmation_view_wrapper;
     state->settings_ui_context.context = state;
-    state->settings_actions_menu = submenu_alloc();
-    if(state->settings_actions_menu) {
-        submenu_set_header(state->settings_actions_menu, "Settings Actions");
-    }
 
     // Initialize settings menu
     settings_setup_gui(state->settings_menu, &state->settings_ui_context);
 
-    // Initialize UART after settings are ready
-    state->uart_context = uart_init(state);
+    // Start UART init in background thread
+    FuriThread* uart_init_thread = furi_thread_alloc_ex(
+        "UartInit", 
+        UART_INIT_STACK_SIZE,  // Increased stack size
+        init_uart_task,
+        state);
 
-    // Add views if view_dispatcher exists
+    // Add views to dispatcher - check each component before adding
     if(state->view_dispatcher) {
         if(state->main_menu) view_dispatcher_add_view(state->view_dispatcher, 0, main_menu_get_view(state->main_menu));
         if(state->wifi_menu) view_dispatcher_add_view(state->view_dispatcher, 1, submenu_get_view(state->wifi_menu));
@@ -108,14 +154,16 @@ int32_t ghost_esp_app(void* p) {
         if(state->confirmation_view) view_dispatcher_add_view(state->view_dispatcher, 7, confirmation_view_get_view(state->confirmation_view));
         if(state->settings_actions_menu) view_dispatcher_add_view(state->view_dispatcher, 8, submenu_get_view(state->settings_actions_menu));
 
-       view_dispatcher_set_custom_event_callback(state->view_dispatcher, settings_custom_event_callback);
- 
+        view_dispatcher_set_custom_event_callback(state->view_dispatcher, settings_custom_event_callback);
     }
 
-    // Show main menu
+    // Show main menu immediately
     show_main_menu(state);
 
-    // Set up GUI
+    // Initialize UART in background
+    state->uart_context = uart_init(state);
+
+    // Set up and run GUI
     Gui* gui = furi_record_open("gui");
     if(gui && state->view_dispatcher) {
         view_dispatcher_attach_to_gui(state->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
@@ -125,12 +173,17 @@ int32_t ghost_esp_app(void* p) {
     }
     furi_record_close("gui");
 
+    // Wait for UART initialization to complete
+    furi_thread_join(uart_init_thread);
+    furi_thread_free(uart_init_thread);
+
     // Start cleanup - first remove views
     if(state->view_dispatcher) {
         for(size_t i = 0; i <= 8; i++) {
             view_dispatcher_remove_view(state->view_dispatcher, i);
         }
     }
+
 
     // Clear callbacks before cleanup
     if(state->confirmation_view) {
@@ -197,7 +250,11 @@ int32_t ghost_esp_app(void* p) {
         free(state->textBoxBuffer);
         state->textBoxBuffer = NULL;
     }
-
+    // Add filter config cleanup
+    if(state->filter_config) {
+        free(state->filter_config);
+        state->filter_config = NULL;
+    }
     // Final state cleanup
     free(state);
 
