@@ -13,6 +13,9 @@ struct ConfirmationView {
 typedef struct {
     const char* header;
     const char* text;
+    uint8_t scroll_position;     // Current scroll position
+    uint8_t total_lines;         // Total number of lines in text
+    bool can_scroll;             // Whether text needs scrolling
 } ConfirmationViewModel;
 
 static void confirmation_view_draw_callback(Canvas* canvas, void* _model) {
@@ -29,10 +32,55 @@ static void confirmation_view_draw_callback(Canvas* canvas, void* _model) {
         elements_multiline_text_aligned(canvas, 64, 5, AlignCenter, AlignTop, model->header);
     }
 
-    // Text
+    // Text area
+    canvas_set_font(canvas, FontSecondary);
+    
+    // Calculate visible area for text (leave space for header and OK button)
+    uint8_t text_y = 20;
+    
     if(model->text) {
-        canvas_set_font(canvas, FontSecondary);
-        elements_multiline_text_aligned(canvas, 63, 20, AlignCenter, AlignTop, model->text);
+        // Create a temporary buffer for visible text
+        const size_t max_visible_chars = 128;  // Reduced size
+        char visible_text[max_visible_chars];
+        uint8_t current_line = 0;
+        uint8_t visible_lines = 0;
+        const char* p = model->text;
+        size_t buffer_pos = 0;
+        
+        // Skip lines before scroll position
+        while(*p && current_line < model->scroll_position) {
+            if(*p == '\n') current_line++;
+            p++;
+        }
+        
+        // Copy only the visible portion of text
+        while(*p && visible_lines < 4 && buffer_pos < (max_visible_chars - 1)) {
+            if(*p == '\n') {
+                visible_lines++;
+                if(visible_lines >= 4) break;
+            }
+            visible_text[buffer_pos++] = *p++;
+        }
+        visible_text[buffer_pos] = '\0';
+        
+        // Draw visible portion
+        elements_multiline_text_aligned(
+            canvas, 
+            63, 
+            text_y, 
+            AlignCenter, 
+            AlignTop, 
+            visible_text);
+
+        // Draw scroll indicators if needed
+        if(model->can_scroll) {
+            if(model->scroll_position > 0) {
+                canvas_draw_str(canvas, 120, text_y, "^");
+            }
+            if(model->scroll_position < model->total_lines - 4) {
+                canvas_draw_str(canvas, 120, 52, "v");
+            }
+        }
     }
 
     // Draw OK button at bottom
@@ -56,41 +104,54 @@ static bool confirmation_view_input_callback(InputEvent* event, void* context) {
 
     bool consumed = false;
 
-    // Handle both short and long presses
-    if(event->type == InputTypeShort || event->type == InputTypeLong) {
-        if(event->key == InputKeyOk) {
-            FURI_LOG_D("ConfView", "OK pressed - Callback: %p, Context: %p", 
-                instance->ok_callback, instance->ok_callback_context);
-                
-            if(instance->ok_callback) {
-                instance->ok_callback(instance->ok_callback_context);
+    with_view_model(
+        instance->view,
+        ConfirmationViewModel* model,
+        {
+            if(event->type == InputTypeShort || event->type == InputTypeRepeat) {
+                if(event->key == InputKeyUp && model->scroll_position > 0) {
+                    model->scroll_position--;
+                    consumed = true;
+                } else if(event->key == InputKeyDown && 
+                         model->can_scroll && 
+                         model->scroll_position < model->total_lines - 4) {
+                    model->scroll_position++;
+                    consumed = true;
+                }
             }
-            consumed = true;
-        } else if(event->key == InputKeyBack) {
-            FURI_LOG_D("ConfView", "Back pressed - Callback: %p, Context: %p",
-                instance->cancel_callback, instance->cancel_callback_context);
-                
-            if(instance->cancel_callback) {
-                instance->cancel_callback(instance->cancel_callback_context);
+        },
+        consumed);
+
+    if(!consumed) {
+        // Handle confirmation actions
+        if(event->type == InputTypeShort || event->type == InputTypeLong) {
+            if(event->key == InputKeyOk) {
+                if(instance->ok_callback) {
+                    instance->ok_callback(instance->ok_callback_context);
+                }
+                consumed = true;
+            } else if(event->key == InputKeyBack) {
+                if(instance->cancel_callback) {
+                    instance->cancel_callback(instance->cancel_callback_context);
+                }
+                consumed = true;
             }
-            consumed = true;
         }
     }
 
     return consumed;
 }
 
-ConfirmationView* confirmation_view_alloc(void) {
+__attribute__((used)) ConfirmationView* confirmation_view_alloc(void) {
     ConfirmationView* instance = malloc(sizeof(ConfirmationView));
-    if(!instance) return NULL;  // Check malloc success
+    if(!instance) return NULL;
 
     instance->view = view_alloc();
-    if(!instance->view) {  // Check view allocation
+    if(!instance->view) {
         free(instance);
         return NULL;
     }
 
-    // Initialize all pointers to NULL
     instance->ok_callback = NULL;
     instance->ok_callback_context = NULL;
     instance->cancel_callback = NULL;
@@ -100,65 +161,71 @@ ConfirmationView* confirmation_view_alloc(void) {
     view_set_draw_callback(instance->view, confirmation_view_draw_callback);
     view_set_input_callback(instance->view, confirmation_view_input_callback);
 
-    // Allocate model properly
     view_allocate_model(instance->view, ViewModelTypeLocking, sizeof(ConfirmationViewModel));
 
     with_view_model(
         instance->view,
         ConfirmationViewModel* model,
         {
-            if(model) {
-                model->header = NULL;
-                model->text = NULL;
-            }
+            model->header = NULL;
+            model->text = NULL;
+            model->scroll_position = 0;
+            model->total_lines = 0;
+            model->can_scroll = false;
         },
         true);
 
     return instance;
 }
 
-void confirmation_view_free(ConfirmationView* instance) {
+__attribute__((used)) void confirmation_view_free(ConfirmationView* instance) {
     if(!instance) return;
-    if(instance->view) {
-        view_free(instance->view);
-    }
+    if(instance->view) view_free(instance->view);
     free(instance);
 }
 
-View* confirmation_view_get_view(ConfirmationView* instance) {
-    if(!instance) return NULL;
-    return instance->view;
+__attribute__((used)) View* confirmation_view_get_view(ConfirmationView* instance) {
+    return instance ? instance->view : NULL;
 }
 
-void confirmation_view_set_header(ConfirmationView* instance, const char* text) {
+__attribute__((used)) void confirmation_view_set_header(ConfirmationView* instance, const char* text) {
     if(!instance || !instance->view) return;
-
     with_view_model(
         instance->view,
         ConfirmationViewModel* model,
         {
-            if(model) {
-                model->header = text;
+            model->header = text;
+        },
+        true);
+}
+
+__attribute__((used)) void confirmation_view_set_text(ConfirmationView* instance, const char* text) {
+    if(!instance || !instance->view) return;
+    with_view_model(
+        instance->view,
+        ConfirmationViewModel* model,
+        {
+            model->text = text;
+            model->scroll_position = 0;
+            
+            if(text) {
+                uint8_t lines = 1;
+                const char* p = text;
+                while(*p) {
+                    if(*p == '\n') lines++;
+                    p++;
+                }
+                model->total_lines = lines;
+                model->can_scroll = (lines > 4);
+            } else {
+                model->total_lines = 0;
+                model->can_scroll = false;
             }
         },
         true);
 }
 
-void confirmation_view_set_text(ConfirmationView* instance, const char* text) {
-    if(!instance || !instance->view) return;
-
-    with_view_model(
-        instance->view,
-        ConfirmationViewModel* model,
-        {
-            if(model) {
-                model->text = text;
-            }
-        },
-        true);
-}
-
-void confirmation_view_set_ok_callback(
+__attribute__((used)) void confirmation_view_set_ok_callback(
     ConfirmationView* instance,
     ConfirmationViewCallback callback,
     void* context) {
@@ -167,7 +234,7 @@ void confirmation_view_set_ok_callback(
     instance->ok_callback_context = context;
 }
 
-void confirmation_view_set_cancel_callback(
+__attribute__((used)) void confirmation_view_set_cancel_callback(
     ConfirmationView* instance,
     ConfirmationViewCallback callback,
     void* context) {

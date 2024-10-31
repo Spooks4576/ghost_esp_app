@@ -1,76 +1,32 @@
 # Changelog
 
 ## v1.0.1
-- [menu.c] Revamped menu – commands are structured better, grouped logically (scanning, beacon spam, attacks, etc.)
-- [menu.c] Made it easier to add new commands to the menu
-- [menu.c] Cleaned up documentation on menu items and properties
-- [settings] Centralized metadata for all settings
-- [settings] Settings are now enum-based – better for validation
-- [settings] Tightened up validation and error handling in settings
-- [settings] Extensible settings structure via SettingMetadata
-- [settings] Added Stop-on-Back feature for command interruption
-- [settings] Added ESP reboot command in the settings menu
-- [connectivity] Added ESP connection verification
-- [connectivity] Clearer error messages on connectivity issues
-- [connectivity] Automatic connectivity check before executing commands
-- [connectivity] Error recovery in case of ESP issues, with return to the menu
-- [ui] UI now builds off metadata for consistency
-- [ui] Better type safety in UI operations
-- [ui] Simplified view switching across the interface
-- [ui] Improved error message display
-- [code organization] Separated out concerns for cleaner structure
-- [code organization] Removed redundant functions
-- [code organization] Better type definitions for clarity
-- [code organization] More consistent error handling throughout
-- [code organization] Reorganized code for better readability
+- Revamped menu structure with logical grouping (scanning, beacon spam, attacks, etc.)
+- Simplified command addition and cleaned up documentation in `menu.c`
+- Centralized and enum-based settings metadata for improved validation and extensibility
+- Enhanced settings with Stop-on-Back feature and ESP reboot command
+- Added ESP connection verification and clearer error messaging
+- Enabled automatic connectivity check and error recovery for ESP issues
+- Unified UI with metadata-driven consistency and better type safety
+- Simplified UI view switching and improved error display
+- Refined code organization, separating concerns, removing redundancy, and standardizing error handling
 
 ## v1.0.2
-- [ui] Added confirmation dialogs for WebUI-dependent features
-- [ui] Improved settings menu organization with dedicated actions submenu
-- [settings] Added NVS clearing with confirmation dialog
-- [settings] Added log clearing functionality
-- [settings] Improved robustness of settings storage and loading
-- [menu] Added contextual help for WebUI configuration requirements
-- [menu] Improved command execution safety with confirmation dialogs
-- [memory] Enhanced memory management and cleanup processes
-- [error handling] Added NULL checks throughout for better stability
-- [code organization] Restructured menu command definitions for easier maintenance
-- [ui] Improved view navigation and state management
-- [cleanup] Added proper cleanup sequences for all components
-- [stability] Added safeguards against potential furi_check failures
-- [memory] Added proper initialization of all structure fields
+- Added confirmation dialogs for WebUI-dependent features in the UI
+- Improved settings menu with actions submenu, NVS clearing, and log clearing
+- Enhanced memory management and improved settings storage/loading robustness
+- Added contextual help for WebUI configuration and confirmation dialogs for command safety
+- Improved view navigation, state management, and memory cleanup processes
+- Added safeguards against `furi_check` failures with NULL checks and memory initialization
 
 ## v1.0.3
-
-### View & Display Improvements 
-- Improved display and structure of confirmation view
- - Shortened border width around dialog
- - Improved text alignment
-- Added > to Configuration submenu
-### Settings & Confirmation Additions
-- Added confirmation view to Clear Log Files setting
- - Added warning about permanent action
- - Requires confirmation before executing 
- - Matches WebUI confirmation pattern
-
-- Made confirmation view exit on back press
- - Fixed callback context handling
- - Updated view state tracking
- - Added view state restoration
- - Fixed memory cleanup
- - Added callback cleanup
- - Fixed transitions between dialogs
-
-### Memory Management  
-- Added context cleanup in dialogs
-- Fixed context sharing between views
-- Added null checks 
-- Fixed memory leaks
-- Added state tracking
-
+- Enhanced confirmation view structure and readability with better text alignment
+- Added confirmation for "Clear Log Files" with a permanent action warning
+- Enabled back press exit on confirmation views with callback context handling
+- Improved memory management with context cleanup, view state tracking, and transition fixes
+- Added NULL checks, fixed memory leaks, and added state tracking for dialogs
 
 ## v1.0.4
-
 - Refined confirmation view line breaks for readability
 - Improved ESP Connectity check to decrease false negatives
 - Added optional filtering to UART output to improve readability (BETA)
@@ -87,8 +43,21 @@
 - Optimized storage initialization by deferring file operations until needed
 - Improved directory creation efficiency in storage handling
 
+
+## v1.0.6
+- Replaced 'Info' command in ESP Check with 'Stop'
+- Slightly improved optional UART filtering
+- Memory safety improvements.
+- Improved Clear Logs to be faster and more efficient 
+- Added details view to each command accessable with hold of center button. (Like BLE Spam)
+- Made ESP Not Connected screen more helpful with prompts to reboot/reflash if issues persist.
+- Renamed CONF menu option to SET to better align with actual Settings menu since it's header is "Settings" and there is a configuration submenu
+- Replaced textbox for ESP Connection Check with scrollable Confirmation View
+
 ## TODO
-- Add Help menu
+
+- Replaced select a utility text with prompt to show NEW Help Menu
 - Add view log from start/end configuration setting
 - Settings get sent to board and get pulled from on ESP Check or Init
-- Improve directory organisation
+- IMPROVE optional filtering to UART output
+- Improve directory organisation!!!!!!!!!!!!!!!!!!!!!!!!!!!!

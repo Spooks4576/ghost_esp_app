@@ -4,56 +4,165 @@
 #include <string.h>
 #include "sequential_file.h"
 #include <gui/modules/text_box.h>
-
+#include <furi_hal_serial.h>
 
 #define WORKER_ALL_RX_EVENTS (WorkerEvtStop | WorkerEvtRxDone | WorkerEvtPcapDone)
 
+#define AP_LIST_TIMEOUT_MS 5000
+
+typedef struct {
+    bool in_ap_list;
+    int ap_count;
+    int expected_ap_count;
+} APListState;
+
+static APListState ap_state = {
+    .in_ap_list = false,
+    .ap_count = 0,
+    .expected_ap_count = 0
+};
+
+typedef struct {
+    // Buffer for incomplete lines
+    char partial_buffer[RX_BUF_SIZE];
+    size_t partial_len;
+    
+    // State tracking
+    bool in_escape;
+    bool in_timestamp;
+    char last_char;
+    
+    // AP list state
+    APListState ap_state;
+} LineProcessingState;
+
+static bool process_chunk(LineProcessingState* state, const char* input, 
+                         char* output, size_t output_size,
+                         size_t* output_len);
+
+static bool format_line(const char* input, char* output, FilterConfig* config);
+
+
+static void uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
+    UartContext* uart = (UartContext*)context;
+    
+    if(event == FuriHalSerialRxEventData) {
+        uint8_t data = furi_hal_serial_async_rx(handle);
+        furi_stream_buffer_send(uart->rx_stream, &data, 1, 0);
+        furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
+    }
+}
+
+static bool process_chunk(LineProcessingState* state, const char* input, 
+                         char* output, size_t output_size,
+                         size_t* output_len) {
+    UNUSED(output_size);  // Properly mark as unused
+    
+    // First, append new input to partial buffer if we have any
+    size_t available = RX_BUF_SIZE - state->partial_len;
+    size_t input_len = strlen(input);
+    
+    if (input_len > available) {
+        // Buffer would overflow - process what we can
+        size_t processable = available;
+        while (processable > 0 && 
+               !isspace((unsigned char)input[processable-1]) && 
+               processable < input_len) {
+            processable--;
+        }
+        
+        memcpy(state->partial_buffer + state->partial_len, 
+               input, processable);
+        state->partial_len += processable;
+        
+        // Process complete line
+        char* newline = strchr(state->partial_buffer, '\n');
+        if (newline) {
+            size_t line_len = newline - state->partial_buffer;
+            memcpy(output, state->partial_buffer, line_len);
+            output[line_len] = '\0';
+            *output_len = line_len;
+            
+            // Move remaining data to start of buffer
+            memmove(state->partial_buffer, newline + 1,
+                   state->partial_len - (line_len + 1));
+            state->partial_len -= (line_len + 1);
+            
+            return true;
+        }
+    } else {
+        // Append all input
+        memcpy(state->partial_buffer + state->partial_len,
+               input, input_len);
+        state->partial_len += input_len;
+    }
+    
+    return false;
+}
+
+
+
 static bool is_ap_list_start(const char* line) {
-    return strstr(line, "Found") != NULL && strstr(line, "access points:") != NULL;
+    if (!line) return false;
+    
+    if (strstr(line, "Found") && strstr(line, "access points:")) {
+        // Extract expected AP count
+        const char* count_start = strstr(line, "Found") + 6;
+        char* end;
+        int count = strtol(count_start, &end, 10);
+        if (count > 0) {
+            ap_state.expected_ap_count = count;
+        }
+        return true;
+    }
+    return false;
 }
 
 static bool is_ap_list_entry(const char* line) {
-    return strstr(line, "SSID:") != NULL && strstr(line, "BSSID:") != NULL && 
-           strstr(line, "RSSI:") != NULL && strstr(line, "Company:") != NULL;
+    if (!line) return false;
+    return strstr(line, "SSID:") != NULL && 
+           strstr(line, "BSSID:") != NULL && 
+           strstr(line, "RSSI:") != NULL && 
+           strstr(line, "Company:") != NULL;
 }
 
 static bool should_filter_line(const char* line) {
-    if(!line || strlen(line) == 0) return true;
+    if (!line || strlen(line) == 0) return true;
     
-    static bool in_ap_list = false;
-    static int ap_count = 0;
+    // Check for AP list completion based on count instead of timeout
+    if (ap_state.in_ap_list && ap_state.ap_count >= ap_state.expected_ap_count) {
+        ap_state.in_ap_list = false;
+        ap_state.ap_count = 0;
+    }
     
-    // If line contains multiple null characters or is corrupted, filter it
+    // Corruption check with improved null handling
     bool has_corruption = false;
-    size_t nulls = 0;
-    for(size_t i = 0; i < strlen(line); i++) {
-        if(line[i] == '\0') nulls++;
-        if(nulls > 1) {
+    size_t line_len = strlen(line);
+    for (size_t i = 0; i < line_len; i++) {
+        if (line[i] == '\0' && i < line_len - 1) {
             has_corruption = true;
             break;
         }
     }
-    if(has_corruption) return true;
+    if (has_corruption) return true;
     
-    // Check if we're starting an AP list
-    if(is_ap_list_start(line)) {
-        in_ap_list = true;
-        ap_count = 0;
-        return false;  // Keep the header line
+    // Improved AP list state management
+    if (is_ap_list_start(line)) {
+        ap_state.in_ap_list = true;
+        ap_state.ap_count = 0;
+        return false;
     }
     
-    // If we're in an AP list, handle entries
-    if(in_ap_list) {
-        if(is_ap_list_entry(line)) {
-            ap_count++;
-            return false;  // Keep all AP entries
-        } else if(strstr(line, "WiFiManager:") == NULL) {
-            // Only exit AP list mode if this isn't another WiFiManager line
-            in_ap_list = false;
+    if (ap_state.in_ap_list) {
+        if (is_ap_list_entry(line)) {
+            ap_state.ap_count++;
+            return false;
+        } else if (strstr(line, "WiFiManager:") == NULL) {
+            ap_state.in_ap_list = false;
         }
     }
 
-    // Always keep these patterns (expanded list)
+    // Enhanced pattern matching with context awareness
     const char* keep_patterns[] = {
         "WiFiManager:",
         "BLE_MANAGER:",
@@ -69,14 +178,11 @@ static bool should_filter_line(const char* line) {
         "IP Address:",
         "AP IP Address:",
         "ready to scan",
+        "mode : sta",      // Added to keep important mode changes
+        "mode : softAP",   // Added to keep important mode changes
         NULL
     };
 
-    for(int i = 0; keep_patterns[i]; i++) {
-        if(strstr(line, keep_patterns[i])) return false;
-    }
-
-    // Filter out known noise (expanded list)
     const char* filter_patterns[] = {
         "No deauth transmission",
         "wifi:flush txq",
@@ -93,31 +199,51 @@ static bool should_filter_line(const char* line) {
         NULL
     };
 
-    for(int i = 0; filter_patterns[i]; i++) {
-        if(strstr(line, filter_patterns[i])) return true;
+    // Check keep patterns first
+    for (int i = 0; keep_patterns[i]; i++) {
+        if (strstr(line, keep_patterns[i])) return false;
     }
 
-    return false;  // Keep by default
+    // Then check filter patterns
+    for (int i = 0; filter_patterns[i]; i++) {
+        if (strstr(line, filter_patterns[i])) return true;
+    }
+
+    return false;
 }
 
 static void clean_text(char* str) {
-    if(!str) return;
+    if (!str) return;
     
-    // First pass: normalize spaces and remove artifacts
     char* write = str;
-    char* read = str;
-    bool last_was_space = true;  // Start true to trim leading spaces
+    const char* read = str;
+    bool in_ansi = false;
+    bool last_was_space = true;
+    char last_char = 0;
     
-    while(*read) {
-        // Skip single-character splits
-        if(*read == '\n' && (*(read+1) != '\0' && !isspace((unsigned char)*(read+1)))) {
+    while (*read) {
+        unsigned char c = (unsigned char)*read;
+        
+        // ANSI escape sequence handling with improved state tracking
+        if (c == '\x1b' || (c == '[' && last_char == '\x1b')) {
+            in_ansi = true;
             read++;
+            last_char = c;
             continue;
         }
         
-        // Normalize spaces
-        if(isspace((unsigned char)*read)) {
-            if(!last_was_space) {
+        if (in_ansi) {
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
+                in_ansi = false;
+            }
+            read++;
+            last_char = c;
+            continue;
+        }
+        
+        // Space normalization with improved boundary checks
+        if (isspace((unsigned char)*read)) {
+            if (!last_was_space && write > str) {
                 *write++ = ' ';
                 last_was_space = true;
             }
@@ -125,126 +251,176 @@ static void clean_text(char* str) {
             *write++ = *read;
             last_was_space = false;
         }
+        
         read++;
+        last_char = c;
+    }
+    
+    // Null terminate and handle trailing space
+    if (write > str && *(write - 1) == ' ') {
+        write--;
     }
     *write = '\0';
-    
-    // Remove trailing space
-    if(write > str && *(write-1) == ' ') {
-        *(write-1) = '\0';
-    }
 }
 
 static void strip_ansi_codes(const char* input, char* output) {
+    if (!input || !output) return;
+   
     size_t j = 0;
     size_t input_len = strlen(input);
     bool in_escape = false;
     bool in_timestamp = false;
-    char temp[RX_BUF_SIZE] = {0};
-    size_t temp_idx = 0;
+    char* temp = malloc(RX_BUF_SIZE);
+    if (!temp) {
+        FURI_LOG_E("UART", "Failed to allocate temp buffer");
+        return;
+    }
+    memset(temp, 0, RX_BUF_SIZE);
     
-    for(size_t i = 0; i < input_len; i++) {
+    size_t temp_idx = 0;
+    char last_char = 0;
+    char next_char = 0;
+   
+    for (size_t i = 0; i < input_len; i++) {
         unsigned char c = (unsigned char)input[i];
-        
-        // Handle escape sequences
-        if(c == '\x1b' || (c == '[' && i > 0 && input[i-1] == '\x1b')) {
+        next_char = (i + 1 < input_len) ? input[i + 1] : 0;
+       
+        // Improved escape sequence handling
+        if (c == '\x1b' || (c == '[' && last_char == '\x1b')) {
             in_escape = true;
+            last_char = c;
             continue;
         }
-        
-        if(in_escape) {
-            if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
+       
+        if (in_escape) {
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
                 in_escape = false;
             }
+            last_char = c;
             continue;
         }
-        
-        // Handle timestamps (e.g., "(1234567)")
-        if(c == '(' && i + 1 < input_len && isdigit((unsigned char)input[i + 1])) {
+       
+        // Enhanced timestamp handling with boundary protection
+        if (c == '(' && next_char && isdigit((unsigned char)next_char)) {
             in_timestamp = true;
             continue;
         }
-        if(in_timestamp) {
-            if(c == ')') {
+        if (in_timestamp) {
+            if (c == ')') {
                 in_timestamp = false;
+                if (next_char && !isspace((unsigned char)next_char)) {
+                    if (temp_idx < RX_BUF_SIZE - 1) {
+                        temp[temp_idx++] = ' ';
+                    }
+                }
             }
             continue;
         }
-        
-        // Skip any remaining color code fragments
-        if(c == ';' && i + 2 < input_len && isdigit((unsigned char)input[i + 1]) && 
-           input[i + 2] == 'm') {
+       
+        // Improved color code fragment handling with boundary check
+        if (c == ';' && i + 2 < input_len &&
+            isdigit((unsigned char)next_char) && input[i + 2] == 'm') {
             i += 2;
             continue;
         }
-        
-        // Collect character into temporary buffer
-        temp[temp_idx++] = c;
-        if(temp_idx >= RX_BUF_SIZE - 1) {
-            clean_text(temp);
-            strncpy(output + j, temp, RX_BUF_SIZE - j - 1);
-            j += strlen(temp);
-            temp_idx = 0;
+       
+        // Enhanced buffer management with word boundary protection
+        if (temp_idx >= RX_BUF_SIZE - 2) {
+            char* last_space = strrchr(temp, ' ');
+            if (last_space) {
+                size_t keep_len = last_space - temp;
+                if (j + keep_len < RX_BUF_SIZE) {
+                    memcpy(output + j, temp, keep_len);
+                    j += keep_len;
+                   
+                    // Move remaining content with overlap protection
+                    size_t remaining = temp_idx - (keep_len + 1);
+                    if (remaining > 0) {
+                        memmove(temp, last_space + 1, remaining);
+                        temp_idx = remaining;
+                    } else {
+                        temp_idx = 0;
+                    }
+                }
+            } else {
+                if (j + temp_idx < RX_BUF_SIZE) {
+                    memcpy(output + j, temp, temp_idx);
+                    j += temp_idx;
+                    temp_idx = 0;
+                }
+            }
         }
+       
+        // Add character with boundary check
+        if (temp_idx < RX_BUF_SIZE - 1) {
+            temp[temp_idx++] = c;
+        }
+        last_char = c;
     }
-    
-    // Handle any remaining characters
-    if(temp_idx > 0) {
+   
+    // Handle remaining characters with improved cleanup
+    if (temp_idx > 0) {
         temp[temp_idx] = '\0';
         clean_text(temp);
-        strncpy(output + j, temp, RX_BUF_SIZE - j - 1);
+        size_t remaining_len = strlen(temp);
+        if (j + remaining_len < RX_BUF_SIZE) {
+            memcpy(output + j, temp, remaining_len);
+            j += remaining_len;
+        }
     }
-    
-    output[RX_BUF_SIZE - 1] = '\0';
+   
+    output[j] = '\0';
+    free(temp);
     clean_text(output);
 }
 
 static bool format_line(const char* input, char* output, FilterConfig* config) {
-    if(!input || !output || !config) return false;
+    if (!input || !output || !config) return false;
     
-    if(!config->enabled) {
+    if (!config->enabled) {
         strncpy(output, input, RX_BUF_SIZE - 1);
         output[RX_BUF_SIZE - 1] = '\0';
         return true;
     }
 
     char* temp = malloc(RX_BUF_SIZE);
-    if(!temp) return false;
+    if (!temp) return false;
     
-    // Initial cleanup
+    // Initial cleanup with improved buffer management
     strncpy(temp, input, RX_BUF_SIZE - 1);
     temp[RX_BUF_SIZE - 1] = '\0';
 
-    // Remove ANSI codes and clean up text
-    if(config->strip_ansi_codes) {
+    // Enhanced ANSI code handling
+    if (config->strip_ansi_codes) {
         char* stripped = malloc(RX_BUF_SIZE);
-        if(stripped) {
+        if (stripped) {
             strip_ansi_codes(temp, stripped);
             strncpy(temp, stripped, RX_BUF_SIZE - 1);
             free(stripped);
         }
     }
 
-    // Remove additional artifacts and normalize
     clean_text(temp);
 
-    // Fix common split patterns
+    // Improved pattern fixing
     char* fixed = temp;
-    while(*fixed) {
-        if(strncmp(fixed, "Wi Fi", 5) == 0) {
+    while (*fixed) {
+        if (strncmp(fixed, "Wi Fi", 5) == 0) {
             memmove(fixed + 4, fixed + 5, strlen(fixed + 5) + 1);
             memcpy(fixed, "WiFi", 4);
         }
+        // Add additional pattern fixes here if needed
         fixed++;
     }
 
-    // Remove any remaining timestamps and ID numbers at start of lines
+    // Enhanced timestamp and ID cleanup
     char* start = temp;
-    while(*start) {
-        if(isdigit((unsigned char)*start) && strstr(start, "]")) {
+    while (*start) {
+        if (isdigit((unsigned char)*start) && strstr(start, "]")) {
             char* end = strstr(start, "]");
-            if(end) {
+            if (end) {
                 memmove(start, end + 1, strlen(end + 1) + 1);
+                while (*start == ' ') start++; // Remove leading spaces
                 continue;
             }
         }
@@ -253,21 +429,21 @@ static bool format_line(const char* input, char* output, FilterConfig* config) {
 
     bool keep_line = !should_filter_line(start);
     
-    if(keep_line) {
+    if (keep_line) {
         const char* prefix = "";
-        if(config->add_prefixes) {
-            if(strstr(start, "WiFi") || strstr(start, "AP_MANAGER") || 
-               strstr(start, "SSID:") || strstr(start, "BSSID:")) {
+        if (config->add_prefixes) {
+            if (strstr(start, "WiFi") || strstr(start, "AP_MANAGER") || 
+                strstr(start, "SSID:") || strstr(start, "BSSID:")) {
                 prefix = "[WIFI] ";
-            } else if(strstr(start, "BLE")) {
+            } else if (strstr(start, "BLE")) {
                 prefix = "[BLE] ";
-            } else if(strstr(start, "Found Flipper")) {
+            } else if (strstr(start, "Found Flipper")) {
                 prefix = "[FLIPPER] ";
             }
         }
 
-        // Add prefix only if it's not already there
-        if(strlen(prefix) > 0 && strncmp(start, prefix, strlen(prefix)) != 0) {
+        // More robust prefix handling
+        if (strlen(prefix) > 0 && strncmp(start, prefix, strlen(prefix)) != 0) {
             snprintf(output, RX_BUF_SIZE - 1, "%s%s", prefix, start);
         } else {
             strncpy(output, start, RX_BUF_SIZE - 1);
@@ -279,14 +455,36 @@ static bool format_line(const char* input, char* output, FilterConfig* config) {
     free(temp);
     return keep_line;
 }
+static bool format_line_with_state(LineProcessingState* state, 
+                                 const char* input,
+                                 char* output, 
+                                 FilterConfig* config) {
+    size_t output_len = 0;
+    
+    if (!process_chunk(state, input, output, RX_BUF_SIZE, &output_len)) {
+        return false;
+    }
+    
+    char* temp_buffer = malloc(RX_BUF_SIZE);
+    if (!temp_buffer) return false;
+    
+    strncpy(temp_buffer, output, RX_BUF_SIZE - 1);
+    temp_buffer[RX_BUF_SIZE - 1] = '\0';
+    
+    bool result = format_line(temp_buffer, output, config);
+    
+    free(temp_buffer);
+    return result;
+}
 
 void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
     AppState *state = (AppState *)context;
+    static LineProcessingState line_state = {0};  // Add state here
+    
     if(!state || !state->uart_context || !state->uart_context->is_serial_active) return;
+    if(!buf || len == 0) return;
 
     const size_t MAX_BUFFER_SIZE = 2 * 1024;
-
-    if(!state || !buf || len == 0) return;
 
     // Ensure proper null termination of input
     if(len >= RX_BUF_SIZE) len = RX_BUF_SIZE - 1;
@@ -294,10 +492,10 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
 
     // Check if filtering is configured and enabled
     if(!state->filter_config || !state->filter_config->enabled) {
-        // No filtering or filtering disabled - use original behavior
+        // Original unfiltered handling
         size_t new_total_len = state->buffer_length + len + 1;
 
-        // Handle buffer overflow (original logic)
+        // Handle buffer overflow
         if(new_total_len > MAX_BUFFER_SIZE) {
             size_t keep_size = MAX_BUFFER_SIZE / 2;
             if(state->textBoxBuffer && state->buffer_length > keep_size) {
@@ -314,21 +512,20 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
             }
         }
 
-        // Allocate or reallocate buffer (original logic)
+        // Allocate or reallocate buffer
         char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
         if(!new_buffer) {
             FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
             return;
         }
 
-        // Copy new data
         memcpy(new_buffer + state->buffer_length, buf, len);
         new_buffer[new_total_len - 1] = '\0';
         
         state->textBoxBuffer = new_buffer;
         state->buffer_length = new_total_len - 1;
 
-        // Update text box and scroll to end
+        // Update text box
         text_box_set_text(state->text_box, state->textBoxBuffer);
         text_box_set_focus(state->text_box, TextBoxFocusEnd);
 
@@ -336,181 +533,61 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
         if(state->uart_context->storageContext->log_file) {
             storage_file_write(state->uart_context->storageContext->log_file, buf, len);
         }
-        return;
-    }
+    } else {
+        // Use the state-based line processing
+        char output[RX_BUF_SIZE];
+        if (format_line_with_state(&line_state, (char*)buf, output, state->filter_config)) {
+            // Only handle complete lines
+            size_t output_len = strlen(output);
+            size_t new_total_len = state->buffer_length + output_len + 2; // +2 for newline and null
 
-    // Filtering is enabled - process line by line
-    char* line_start = (char*)buf;
-    char* current = line_start;
-    char* filtered_buffer = malloc(MAX_BUFFER_SIZE);
-    size_t filtered_len = 0;
-
-    if(!filtered_buffer) {
-        FURI_LOG_E("UART", "Failed to allocate filter buffer");
-        return;
-    }
-
-    filtered_buffer[0] = '\0';
-
-    // Process each line through the filter
-    while(current < (char*)buf + len) {
-        if(*current == '\n' || current == (char*)buf + len - 1) {
-            size_t line_len = current - line_start + 1;
-            char* line_buf = malloc(line_len + 1);
-            
-            if(line_buf) {
-                memcpy(line_buf, line_start, line_len);
-                line_buf[line_len] = '\0';
-
-                char output_line[RX_BUF_SIZE];
-                if(format_line(line_buf, output_line, state->filter_config)) {
-                    size_t output_len = strlen(output_line);
-                    if(filtered_len + output_len < MAX_BUFFER_SIZE - 2) {
-                        strcat(filtered_buffer, output_line);
-                        strcat(filtered_buffer, "\n");
-                        filtered_len += output_len + 1;
-                    }
+            // Handle buffer overflow
+            if(new_total_len > MAX_BUFFER_SIZE) {
+                size_t keep_size = MAX_BUFFER_SIZE / 2;
+                if(state->textBoxBuffer && state->buffer_length > keep_size) {
+                    memmove(state->textBoxBuffer, 
+                           state->textBoxBuffer + state->buffer_length - keep_size,
+                           keep_size);
+                    state->buffer_length = keep_size;
+                    new_total_len = keep_size + output_len + 2;
+                } else {
+                    free(state->textBoxBuffer);
+                    state->textBoxBuffer = NULL;
+                    state->buffer_length = 0;
+                    new_total_len = output_len + 2;
                 }
-                free(line_buf);
             }
-            line_start = current + 1;
-        }
-        current++;
-    }
 
-    // Only proceed if we have filtered content
-    if(filtered_len > 0) {
-        size_t new_total_len = state->buffer_length + filtered_len + 1;
-
-        // Handle buffer overflow
-        if(new_total_len > MAX_BUFFER_SIZE) {
-            size_t keep_size = MAX_BUFFER_SIZE / 2;
-            if(state->textBoxBuffer && state->buffer_length > keep_size) {
-                memmove(state->textBoxBuffer, 
-                       state->textBoxBuffer + state->buffer_length - keep_size,
-                       keep_size);
-                state->buffer_length = keep_size;
-                new_total_len = keep_size + filtered_len + 1;
-            } else {
-                free(state->textBoxBuffer);
-                state->textBoxBuffer = NULL;
-                state->buffer_length = 0;
-                new_total_len = filtered_len + 1;
-            }
-        }
-
-        // Allocate or reallocate buffer
-        char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
-        if(new_buffer) {
-            if(state->buffer_length == 0) {
-                new_buffer[0] = '\0';
-            }
-            strcat(new_buffer, filtered_buffer);
-            state->textBoxBuffer = new_buffer;
-            state->buffer_length = strlen(new_buffer);
-
-            // Update text box and scroll to end
-            text_box_set_text(state->text_box, state->textBoxBuffer);
-            text_box_set_focus(state->text_box, TextBoxFocusEnd);
-
-            // Write to log file if enabled
-            if(state->uart_context->storageContext->log_file) {
-                storage_file_write(
-                    state->uart_context->storageContext->log_file, 
-                    filtered_buffer, 
-                    filtered_len);
-            }
-        } else {
-            FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
-        }
-    }
-
-    free(filtered_buffer);
-}
-
-// UART receive callback function
-static void
-uart_rx_callback(FuriHalSerialHandle *handle, FuriHalSerialRxEvent event, void *context)
-{
-    UartContext *uart = (UartContext *)context;
-
-    if (event == FuriHalSerialRxEventData)
-    {
-        uint8_t data = furi_hal_serial_async_rx(handle);
-
-        const char *mark_begin = "[BUF/BEGIN]";
-        const char *mark_close = "[BUF/CLOSE]";
-
-        if (uart->mark_test_idx != 0)
-        {
-            if (data == mark_begin[uart->mark_test_idx] ||
-                data == mark_close[uart->mark_test_idx])
-            {
-                uart->mark_test_buf[uart->mark_test_idx++] = data;
-
-                if (uart->mark_test_idx == sizeof(uart->mark_test_buf))
-                {
-                    if (!memcmp(
-                            uart->mark_test_buf, (void *)mark_begin, sizeof(uart->mark_test_buf)))
-                    {
-                        uart->pcap = true;
-                    }
-                    else if (!memcmp(
-                                 uart->mark_test_buf,
-                                 (void *)mark_close,
-                                 sizeof(uart->mark_test_buf)))
-                    {
-                        uart->pcap = false;
-                    }
-                    else
-                    {
-                    }
-
-                    uart->mark_test_idx = 0;
+            // Allocate or reallocate buffer
+            char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
+            if(new_buffer) {
+                if(state->buffer_length == 0) {
+                    new_buffer[0] = '\0';
                 }
-                return;
-            }
-            else
-            {
-                if (uart->pcap)
-                {
-                    furi_stream_buffer_send(
-                        uart->pcap_stream, uart->mark_test_buf, uart->mark_test_idx, 0);
-                    furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
-                }
-                else
-                {
-                    furi_stream_buffer_send(
-                        uart->rx_stream, uart->mark_test_buf, uart->mark_test_idx, 0);
-                    furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
-                }
-                uart->mark_test_idx = 0;
-            }
-        }
+                strcat(new_buffer, output);
+                strcat(new_buffer, "\n");
+                state->textBoxBuffer = new_buffer;
+                state->buffer_length = strlen(new_buffer);
 
-        if (data == mark_begin[0])
-        {
-            uart->mark_test_buf[uart->mark_test_idx++] = data;
-        }
-        else
-        {
-            if (uart->pcap)
-            {
-                furi_stream_buffer_send(uart->pcap_stream, &data, 1, 0);
-                furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
+                // Update text box
+                text_box_set_text(state->text_box, state->textBoxBuffer);
+                text_box_set_focus(state->text_box, TextBoxFocusEnd);
+
+                // Write to log file if enabled
+                if(state->uart_context->storageContext->log_file) {
+                    storage_file_write(
+                        state->uart_context->storageContext->log_file, 
+                        output, 
+                        strlen(output));
+                    storage_file_write(
+                        state->uart_context->storageContext->log_file,
+                        "\n",
+                        1);
+                }
             }
-            else
-            {
-                furi_stream_buffer_send(uart->rx_stream, &data, 1, 0);
-                furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
-            }
         }
-    }
-    else
-    {
     }
 }
-
 // UART worker thread function
 static int32_t uart_worker(void *context) {
     UartContext *uart = (void *)context;
@@ -579,7 +656,7 @@ UartContext *uart_init(AppState *state) {
     uart->rx_thread = furi_thread_alloc();
     if (uart->rx_thread) {
         furi_thread_set_name(uart->rx_thread, "UART_Receive");
-        furi_thread_set_stack_size(uart->rx_thread, 1024);
+        furi_thread_set_stack_size(uart->rx_thread, 2048);
         furi_thread_set_context(uart->rx_thread, uart);
         furi_thread_set_callback(uart->rx_thread, uart_worker);
         furi_thread_start(uart->rx_thread);
@@ -738,7 +815,7 @@ bool uart_is_esp_connected(UartContext* uart) {
     FURI_LOG_D("UART", "Initialized new buffer");
 
     // Send test command
-    const char* test_cmd = "info\n";
+    const char* test_cmd = "stop\n";
     uart_send(uart, (uint8_t*)test_cmd, strlen(test_cmd));
     FURI_LOG_D("UART", "Sent info command (%d bytes)", strlen(test_cmd));
 

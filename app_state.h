@@ -31,8 +31,8 @@ struct AppState {
     VariableItemList* settings_menu;
     TextBox* text_box;
     TextInput* text_input;
-    ConfirmationView* confirmation_view;  // Add this
-
+    ConfirmationView* confirmation_view;
+    FuriMutex* buffer_mutex;
     // UART Context
     UartContext* uart_context;
     FilterConfig* filter_config;
@@ -43,10 +43,12 @@ struct AppState {
     Submenu* settings_actions_menu;
     
     // State
+    uint32_t current_index; 
     uint8_t current_view;
     uint8_t previous_view;
     char* input_buffer;
     const char* uart_command;
     char* textBoxBuffer;
     size_t buffer_length;
+    size_t buffer_capacity; 
 };

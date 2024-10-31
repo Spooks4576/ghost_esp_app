@@ -27,7 +27,6 @@
 #include "settings_ui.h"
 
 #define UART_INIT_STACK_SIZE 2048
-
 static int32_t init_uart_task(void* context) {
     AppState* state = context;
     
