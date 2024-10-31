@@ -17,60 +17,18 @@ typedef struct {
 } VariableItemContext;
 
 
-// Function to clear log files
-void clear_log_files(void* context) {
-    AppState* app = (AppState*)context;
+#define MAX_FILENAME_LEN 256
+#define MAX_PATH_LEN 512
 
-    FURI_LOG_I("ClearLogs", "Entering clear_log_files function");
-
-    FURI_LOG_I("ClearLogs", "Starting log cleanup");
-
-    // Close current log file if it exists
+static inline void close_current_log(AppState* app) {
     if(app && app->uart_context && app->uart_context->storageContext &&
        app->uart_context->storageContext->log_file) {
-        FURI_LOG_D("ClearLogs", "Closing current log file");
         storage_file_close(app->uart_context->storageContext->log_file);
     }
+}
 
-    Storage* storage = furi_record_open(RECORD_STORAGE);
-    File* dir = storage_file_alloc(storage);
-    FileInfo file_info;
-    char* filename = malloc(256);
-    int deleted_count = 0;
-
-    FURI_LOG_I("ClearLogs", "Opening logs directory: %s", GHOST_ESP_APP_FOLDER_LOGS);
-    if(storage_dir_open(dir, GHOST_ESP_APP_FOLDER_LOGS)) {
-        FURI_LOG_D("ClearLogs", "Successfully opened logs directory");
-        while(storage_dir_read(dir, &file_info, filename, 256)) {
-            if(!(file_info.flags & FSF_DIRECTORY)) {
-                FURI_LOG_D("ClearLogs", "Processing file: %s", filename);
-                char full_path[512];
-                snprintf(full_path, sizeof(full_path), "%s/%s", GHOST_ESP_APP_FOLDER_LOGS, filename);
-                FURI_LOG_I("ClearLogs", "Attempting to delete: %s", full_path);
-
-                if(storage_file_exists(storage, full_path)) {
-                    FURI_LOG_D("ClearLogs", "File exists, attempting to delete: %s", full_path);
-                    if(storage_simply_remove(storage, full_path)) {
-                        FURI_LOG_I("ClearLogs", "Successfully deleted: %s", filename);
-                        deleted_count++;
-                    } else {
-                        FURI_LOG_E("ClearLogs", "Failed to delete: %s", filename);
-                    }
-                }
-            }
-        }
-    }
-
-    FURI_LOG_D("ClearLogs", "Freeing filename buffer");
-    free(filename);
-    storage_dir_close(dir);
-    storage_file_free(dir);
-
-    FURI_LOG_I("ClearLogs", "Deleted %d files", deleted_count);
-
-    // Create new log file
+static inline void create_new_log(AppState* app) {
     if(app && app->uart_context && app->uart_context->storageContext) {
-        FURI_LOG_I("ClearLogs", "Creating new log file");
         sequential_file_open(
             app->uart_context->storageContext->storage_api,
             app->uart_context->storageContext->log_file,
@@ -78,9 +36,53 @@ void clear_log_files(void* context) {
             "ghost_logs",
             "txt");
     }
+}
 
+void clear_log_files(void* context) {
+    AppState* app = (AppState*)context;
+    if(!app) return;
+
+    // Close current log file
+    close_current_log(app);
+
+    // Stack allocation for better performance
+    char filename[MAX_FILENAME_LEN];
+    char full_path[MAX_PATH_LEN];
+    FileInfo file_info;
+    int deleted_count = 0;
+
+    // Open storage once
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* dir = storage_file_alloc(storage);
+
+    if(!storage_dir_open(dir, GHOST_ESP_APP_FOLDER_LOGS)) {
+        FURI_LOG_E("ClearLogs", "Failed to open logs directory");
+        goto cleanup;
+    }
+
+    // Batch process files
+    while(storage_dir_read(dir, &file_info, filename, MAX_FILENAME_LEN)) {
+        if(file_info.flags & FSF_DIRECTORY) continue;
+
+        // Construct path only for files
+        snprintf(full_path, MAX_PATH_LEN, "%s/%s", GHOST_ESP_APP_FOLDER_LOGS, filename);
+
+        // Remove file directly without extra existence check
+        if(storage_simply_remove(storage, full_path)) {
+            deleted_count++;
+        }
+    }
+
+    FURI_LOG_I("ClearLogs", "Deleted %d files", deleted_count);
+
+cleanup:
+    // Cleanup resources
+    storage_dir_close(dir);
+    storage_file_free(dir);
     furi_record_close(RECORD_STORAGE);
-    FURI_LOG_I("ClearLogs", "Log cleanup complete");
+
+    // Create new log file
+    create_new_log(app);
 }
 
 bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* context) {
@@ -380,7 +382,7 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
                 "Updated by: Jay Candel\n"
                 "Built with <3";
 
-            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.0.5");
+            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.0.6");
             confirmation_view_set_text(app_state->confirmation_view, info_text);
             
             // Save current view before switching

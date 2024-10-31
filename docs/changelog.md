@@ -46,12 +46,17 @@
 
 ## v1.0.6
 - Replaced 'Info' command in ESP Check with 'Stop'
-- IMPROVED optional filtering to UART output
-
-
+- Slightly improved optional UART filtering
+- Memory safety improvements.
+- Improved Clear Logs to be faster and more efficient 
+- Added details view to each command accessable with hold of center button. (Like BLE Spam)
+- Made ESP Not Connected screen more helpful with prompts to reboot/reflash if issues persist.
+- Renamed CONF menu option to SET to better align with actual Settings menu since it's header is "Settings" and there is a configuration submenu
+- Replaced textbox for ESP Connection Check with scrollable Confirmation View
 
 ## TODO
-- Add Help menu??
+
+- Replaced select a utility text with prompt to show NEW Help Menu
 - Add view log from start/end configuration setting
 - Settings get sent to board and get pulled from on ESP Check or Init
 - IMPROVE optional filtering to UART output
