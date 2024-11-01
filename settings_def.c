@@ -7,6 +7,7 @@ const char* const SETTING_VALUE_NAMES_RGB_MODE[] = {"Stealth", "Normal", "Rainbo
 const char* const SETTING_VALUE_NAMES_CHANNEL_HOP[] = {"500ms", "1000ms", "2000ms", "3000ms", "4000ms"};
 const char* const SETTING_VALUE_NAMES_BOOL[] = {"False", "True"};
 const char* const SETTING_VALUE_NAMES_ACTION[] = {"Press OK", "Press OK"};
+const char* const SETTING_VALUE_NAMES_LOG_VIEW[] = {"End", "Start"};
 
 #include "settings_ui.h"  // Add this include at the top
 
@@ -100,6 +101,15 @@ const SettingMetadata SETTING_METADATA[SETTINGS_COUNT] = {
             .callback = NULL
         },
         .is_action = true
+    },
+    [SETTING_VIEW_LOGS_FROM_START] = {
+        .name = "View Logs From",
+        .data.setting = {
+            .max_value = 1,
+            .value_names = SETTING_VALUE_NAMES_LOG_VIEW,  // We'll define this
+            .uart_command = NULL  // No UART command needed since this is handled locally
+        },
+        .is_action = false
     }
 };
 // Update the function signature to include the is_action flag

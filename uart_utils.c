@@ -9,32 +9,19 @@
 #define WORKER_ALL_RX_EVENTS (WorkerEvtStop | WorkerEvtRxDone | WorkerEvtPcapDone)
 
 #define AP_LIST_TIMEOUT_MS 5000
+#define INITIAL_BUFFER_SIZE 2048
+#define BUFFER_GROWTH_FACTOR 1.5
+#define MAX_BUFFER_SIZE (8 * 1024)  // 8KB max
+static FuriMutex* buffer_mutex = NULL;
+#define MUTEX_TIMEOUT_MS 1000
+#define BUFFER_CLEAR_SIZE 128
 
-typedef struct {
-    bool in_ap_list;
-    int ap_count;
-    int expected_ap_count;
-} APListState;
-
-static APListState ap_state = {
+// In uart_utils.c, after the defines
+static APListState g_ap_list_state = {
     .in_ap_list = false,
     .ap_count = 0,
     .expected_ap_count = 0
 };
-
-typedef struct {
-    // Buffer for incomplete lines
-    char partial_buffer[RX_BUF_SIZE];
-    size_t partial_len;
-    
-    // State tracking
-    bool in_escape;
-    bool in_timestamp;
-    char last_char;
-    
-    // AP list state
-    APListState ap_state;
-} LineProcessingState;
 
 static bool process_chunk(LineProcessingState* state, const char* input, 
                          char* output, size_t output_size,
@@ -42,65 +29,189 @@ static bool process_chunk(LineProcessingState* state, const char* input,
 
 static bool format_line(const char* input, char* output, FilterConfig* config);
 
+static bool init_buffer_mutex() {
+    if(!buffer_mutex) {
+        buffer_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+        if(!buffer_mutex) {
+            FURI_LOG_E("UART", "Failed to create buffer mutex");
+            return false;
+        }
+    }
+    return true;
+}
 
 static void uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
     UartContext* uart = (UartContext*)context;
+    static uint8_t rx_buf[256];  // Increased buffer size further for safety
+    static size_t rx_buf_pos = 0;
     
     if(event == FuriHalSerialRxEventData) {
         uint8_t data = furi_hal_serial_async_rx(handle);
-        furi_stream_buffer_send(uart->rx_stream, &data, 1, 0);
-        furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
+        const char* mark_begin = "[BUF/BEGIN]";
+        const char* mark_close = "[BUF/CLOSE]";
+        bool data_handled = false;
+
+        // Handle marker detection first
+        if(uart->mark_test_idx > 0) {
+            if(uart->mark_test_idx < sizeof(uart->mark_test_buf) - 1) {
+                // Still collecting potential marker
+                if(data == mark_begin[uart->mark_test_idx] ||
+                   data == mark_close[uart->mark_test_idx]) {
+                    uart->mark_test_buf[uart->mark_test_idx++] = data;
+                    if(uart->mark_test_idx == 11) {
+                        // Complete marker - check type and flush buffer first
+                        if(rx_buf_pos > 0) {
+                            size_t sent = furi_stream_buffer_send(uart->rx_stream, rx_buf, rx_buf_pos, 0);
+                            if(sent != rx_buf_pos) {
+                                FURI_LOG_E("UART", "Buffer overflow - lost %d bytes", rx_buf_pos - sent);
+                            }
+                            furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
+                            rx_buf_pos = 0;
+                        }
+                        
+                        if(!memcmp(uart->mark_test_buf, mark_begin, 11)) {
+                            uart->pcap = true;
+                        } else if(!memcmp(uart->mark_test_buf, mark_close, 11)) {
+                            uart->pcap = false;
+                        }
+                        uart->mark_test_idx = 0;
+                    }
+                    data_handled = true;
+                } else {
+                    // Marker mismatch - add to appropriate buffer
+                    if(uart->pcap) {
+                        size_t sent = furi_stream_buffer_send(uart->pcap_stream, uart->mark_test_buf,
+                                              uart->mark_test_idx, 0);
+                        if(sent != uart->mark_test_idx) {
+                            FURI_LOG_E("UART", "PCAP buffer overflow - lost %d bytes", 
+                                     uart->mark_test_idx - sent);
+                        }
+                        furi_thread_flags_set(furi_thread_get_id(uart->rx_thread),
+                                            WorkerEvtPcapDone);
+                    } else {
+                        // Add to line buffer
+                        for(size_t i = 0; i < uart->mark_test_idx; i++) {
+                            if(rx_buf_pos < sizeof(rx_buf)) {
+                                rx_buf[rx_buf_pos++] = uart->mark_test_buf[i];
+                            }
+                        }
+                    }
+                    uart->mark_test_idx = 0;
+                }
+            } else {
+                // Buffer overflow protection
+                uart->mark_test_idx = 0;
+            }
+        }
+
+        // Handle start of new marker
+        if(!data_handled && data == mark_begin[0]) {
+            uart->mark_test_buf[0] = data;
+            uart->mark_test_idx = 1;
+            data_handled = true;
+        }
+
+        // Handle regular data
+        if(!data_handled) {
+            if(uart->pcap) {
+                size_t sent = furi_stream_buffer_send(uart->pcap_stream, &data, 1, 0);
+                if(sent != 1) {
+                    FURI_LOG_E("UART", "PCAP buffer overflow - lost byte");
+                }
+                furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
+            } else {
+                // Add to line buffer
+                if(rx_buf_pos < sizeof(rx_buf)) {
+                    rx_buf[rx_buf_pos++] = data;
+                }
+                
+                // Send buffer when we have a complete line or buffer is getting full
+                if(data == '\n' || rx_buf_pos >= (sizeof(rx_buf) * 3/4)) {
+                    size_t sent = furi_stream_buffer_send(uart->rx_stream, rx_buf, rx_buf_pos, 0);
+                    if(sent != rx_buf_pos) {
+                        FURI_LOG_E("UART", "Buffer overflow - lost %d bytes", rx_buf_pos - sent);
+                    }
+                    furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
+                    rx_buf_pos = 0;
+                }
+            }
+        }
     }
 }
-
 static bool process_chunk(LineProcessingState* state, const char* input, 
                          char* output, size_t output_size,
                          size_t* output_len) {
-    UNUSED(output_size);  // Properly mark as unused
+    if(!state || !input || !output || !output_len) return false;
     
-    // First, append new input to partial buffer if we have any
-    size_t available = RX_BUF_SIZE - state->partial_len;
     size_t input_len = strlen(input);
-    
-    if (input_len > available) {
-        // Buffer would overflow - process what we can
-        size_t processable = available;
-        while (processable > 0 && 
-               !isspace((unsigned char)input[processable-1]) && 
-               processable < input_len) {
-            processable--;
-        }
+    if(input_len == 0) return false;
+
+    // Handle case where we already have a complete line
+    char* existing_newline = strchr(state->partial_buffer, '\n');
+    if(existing_newline) {
+        size_t line_len = existing_newline - state->partial_buffer;
+        if(line_len >= output_size) line_len = output_size - 1;
         
-        memcpy(state->partial_buffer + state->partial_len, 
-               input, processable);
-        state->partial_len += processable;
-        
-        // Process complete line
-        char* newline = strchr(state->partial_buffer, '\n');
-        if (newline) {
-            size_t line_len = newline - state->partial_buffer;
-            memcpy(output, state->partial_buffer, line_len);
-            output[line_len] = '\0';
-            *output_len = line_len;
-            
-            // Move remaining data to start of buffer
-            memmove(state->partial_buffer, newline + 1,
-                   state->partial_len - (line_len + 1));
-            state->partial_len -= (line_len + 1);
-            
-            return true;
+        memcpy(output, state->partial_buffer, line_len);
+        output[line_len] = '\0';
+        *output_len = line_len;
+
+        size_t remaining = state->partial_len - (line_len + 1);
+        if(remaining > 0) {
+            memmove(state->partial_buffer, existing_newline + 1, remaining);
+            state->partial_len = remaining;
+        } else {
+            state->partial_len = 0;
         }
-    } else {
-        // Append all input
-        memcpy(state->partial_buffer + state->partial_len,
-               input, input_len);
-        state->partial_len += input_len;
+        state->partial_buffer[state->partial_len] = '\0';
+        return true;
     }
+
+    // Append new input if room
+    size_t space = RX_BUF_SIZE - state->partial_len - 1;
+    size_t to_copy = (input_len > space) ? space : input_len;
     
+    memcpy(state->partial_buffer + state->partial_len, input, to_copy);
+    state->partial_len += to_copy;
+    state->partial_buffer[state->partial_len] = '\0';
+
+    // Look for complete line in combined buffer
+    char* newline = strchr(state->partial_buffer, '\n');
+    if(newline) {
+        size_t line_len = newline - state->partial_buffer;
+        if(line_len >= output_size) line_len = output_size - 1;
+        
+        memcpy(output, state->partial_buffer, line_len);
+        output[line_len] = '\0';
+        *output_len = line_len;
+
+        size_t remaining = state->partial_len - (line_len + 1);
+        if(remaining > 0) {
+            memmove(state->partial_buffer, newline + 1, remaining);
+            state->partial_len = remaining;
+        } else {
+            state->partial_len = 0;
+        }
+        state->partial_buffer[state->partial_len] = '\0';
+        return true;
+    }
+
+    // Force output if buffer nearly full
+    if(state->partial_len >= RX_BUF_SIZE - 2) {
+        size_t out_len = state->partial_len;
+        if(out_len >= output_size) out_len = output_size - 1;
+        
+        memcpy(output, state->partial_buffer, out_len);
+        output[out_len] = '\0';
+        *output_len = out_len;
+        
+        state->partial_len = 0;
+        state->partial_buffer[0] = '\0';
+        return true;
+    }
+
     return false;
 }
-
-
 
 static bool is_ap_list_start(const char* line) {
     if (!line) return false;
@@ -111,7 +222,7 @@ static bool is_ap_list_start(const char* line) {
         char* end;
         int count = strtol(count_start, &end, 10);
         if (count > 0) {
-            ap_state.expected_ap_count = count;
+            g_ap_list_state.expected_ap_count = count;
         }
         return true;
     }
@@ -126,140 +237,105 @@ static bool is_ap_list_entry(const char* line) {
            strstr(line, "Company:") != NULL;
 }
 
-static bool should_filter_line(const char* line) {
-    if (!line || strlen(line) == 0) return true;
-    
-    // Check for AP list completion based on count instead of timeout
-    if (ap_state.in_ap_list && ap_state.ap_count >= ap_state.expected_ap_count) {
-        ap_state.in_ap_list = false;
-        ap_state.ap_count = 0;
+static bool match_any_pattern(const char* line, const char* patterns[]) {
+    for(int i = 0; patterns[i]; i++) {
+        if(strstr(line, patterns[i])) return true;
     }
+    return false;
+}
+
+static bool should_filter_line(const char* line) {
+    if(!line || !*line) return true;  // Filter empty lines
     
-    // Corruption check with improved null handling
-    bool has_corruption = false;
-    size_t line_len = strlen(line);
-    for (size_t i = 0; i < line_len; i++) {
-        if (line[i] == '\0' && i < line_len - 1) {
-            has_corruption = true;
-            break;
+    // Handle AP list state
+    if(g_ap_list_state.in_ap_list) {
+        if(g_ap_list_state.ap_count >= g_ap_list_state.expected_ap_count) {
+            g_ap_list_state.in_ap_list = false;
+            g_ap_list_state.ap_count = 0;
         }
     }
-    if (has_corruption) return true;
-    
-    // Improved AP list state management
-    if (is_ap_list_start(line)) {
-        ap_state.in_ap_list = true;
-        ap_state.ap_count = 0;
+
+    // AP List handling
+    if(is_ap_list_start(line)) {
+        g_ap_list_state.in_ap_list = true;
+        g_ap_list_state.ap_count = 0;
         return false;
     }
     
-    if (ap_state.in_ap_list) {
-        if (is_ap_list_entry(line)) {
-            ap_state.ap_count++;
+    if(g_ap_list_state.in_ap_list) {
+        if(is_ap_list_entry(line)) {
+            g_ap_list_state.ap_count++;
             return false;
-        } else if (strstr(line, "WiFiManager:") == NULL) {
-            ap_state.in_ap_list = false;
+        }
+        if(!strstr(line, "WiFiManager:")) {
+            g_ap_list_state.in_ap_list = false;
         }
     }
 
-    // Enhanced pattern matching with context awareness
-    const char* keep_patterns[] = {
-        "WiFiManager:",
-        "BLE_MANAGER:",
-        "ESP32",
-        "WiFi scan",
-        "scan started",
-        "scan stopped",
-        "monitor mode",
-        "AP count",
-        "Added station",
-        "HTTP server",
-        "DHCP server",
-        "IP Address:",
-        "AP IP Address:",
-        "ready to scan",
-        "mode : sta",      // Added to keep important mode changes
-        "mode : softAP",   // Added to keep important mode changes
+    static const char* keep_patterns[] = {
+        "WiFiManager:", "BLE_MANAGER:", "ESP32",
+        "WiFi scan", "scan started", "scan stopped",
+        "monitor mode", "AP count", "Added station",
+        "HTTP server", "DHCP server", "IP Address:",
+        "AP IP Address:", "ready to scan",
+        "mode : sta", "mode : softAP",
         NULL
     };
 
-    const char* filter_patterns[] = {
-        "No deauth transmission",
-        "wifi:flush txq",
-        "wifi:stop sw txq",
-        "wifi:lmac stop hw",
-        "wifi:enable tsf",
-        "wifi:Total power save buffer",
-        "wifi:Init max length of beacon",
-        "wifi:new:",
-        "wifi:station:",
-        "wifi:<ba-",
-        "own_addr_type=",
+    static const char* filter_patterns[] = {
+        "No deauth transmission", "wifi:flush txq",
+        "wifi:stop sw txq", "wifi:lmac stop hw",
+        "wifi:enable tsf", "wifi:Total power save buffer",
+        "wifi:Init max length of beacon", "wifi:new:",
+        "wifi:station:", "wifi:<ba-", "own_addr_type=",
         "duration=forever",
         NULL
     };
 
-    // Check keep patterns first
-    for (int i = 0; keep_patterns[i]; i++) {
-        if (strstr(line, keep_patterns[i])) return false;
-    }
+    // Keep patterns take precedence
+    if(match_any_pattern(line, keep_patterns)) return false;
+    if(match_any_pattern(line, filter_patterns)) return true;
 
-    // Then check filter patterns
-    for (int i = 0; filter_patterns[i]; i++) {
-        if (strstr(line, filter_patterns[i])) return true;
-    }
-
-    return false;
+    return false; // Default to keeping line if no patterns match
 }
 
 static void clean_text(char* str) {
-    if (!str) return;
-    
-    char* write = str;
+    if(!str) return;
+
     const char* read = str;
-    bool in_ansi = false;
+    char* write = str;
+    bool in_escape = false;
     bool last_was_space = true;
-    char last_char = 0;
-    
-    while (*read) {
-        unsigned char c = (unsigned char)*read;
-        
-        // ANSI escape sequence handling with improved state tracking
-        if (c == '\x1b' || (c == '[' && last_char == '\x1b')) {
-            in_ansi = true;
-            read++;
-            last_char = c;
+
+    while(*read) {
+        unsigned char c = *read++;
+
+        // Handle ANSI sequences
+        if(c == '\x1b' || (in_escape && (c == '['))) {
+            in_escape = true;
             continue;
         }
-        
-        if (in_ansi) {
-            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
-                in_ansi = false;
+        if(in_escape) {
+            if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
+                in_escape = false;
             }
-            read++;
-            last_char = c;
             continue;
         }
-        
-        // Space normalization with improved boundary checks
-        if (isspace((unsigned char)*read)) {
-            if (!last_was_space && write > str) {
+
+        // Handle normal characters
+        if(isspace(c)) {
+            if(!last_was_space) {
                 *write++ = ' ';
                 last_was_space = true;
             }
         } else {
-            *write++ = *read;
+            *write++ = c;
             last_was_space = false;
         }
-        
-        read++;
-        last_char = c;
     }
-    
-    // Null terminate and handle trailing space
-    if (write > str && *(write - 1) == ' ') {
-        write--;
-    }
+
+    // Trim trailing space
+    if(write > str && write[-1] == ' ') write--;
     *write = '\0';
 }
 
@@ -477,25 +553,47 @@ static bool format_line_with_state(LineProcessingState* state,
     return result;
 }
 
+static UartLineState* get_line_state(UartContext* uart) {
+    if(!uart->line_state) {
+        uart->line_state = malloc(sizeof(UartLineState));
+        if(uart->line_state) {
+            memset(uart->line_state, 0, sizeof(UartLineState));
+            uart->line_state->initialized = true;
+        }
+    }
+    return uart->line_state;
+}
+
 void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
     AppState *state = (AppState *)context;
-    static LineProcessingState line_state = {0};  // Add state here
     
     if(!state || !state->uart_context || !state->uart_context->is_serial_active) return;
     if(!buf || len == 0) return;
 
-    const size_t MAX_BUFFER_SIZE = 2 * 1024;
+    // Initialize buffer mutex if needed
+    if(!init_buffer_mutex()) return;
+
+    // Try to acquire mutex with timeout
+    if(furi_mutex_acquire(buffer_mutex, MUTEX_TIMEOUT_MS) != FuriStatusOk) {
+        FURI_LOG_W("UART", "Buffer mutex timeout");
+        return;
+    }
+
+    // Get instance-specific line state
+    UartLineState* uart_line_state = get_line_state(state->uart_context);
+    if(!uart_line_state) {
+        furi_mutex_release(buffer_mutex);
+        return;
+    }
 
     // Ensure proper null termination of input
     if(len >= RX_BUF_SIZE) len = RX_BUF_SIZE - 1;
     buf[len] = '\0';
 
-    // Check if filtering is configured and enabled
     if(!state->filter_config || !state->filter_config->enabled) {
-        // Original unfiltered handling
+        // Unfiltered handling
         size_t new_total_len = state->buffer_length + len + 1;
 
-        // Handle buffer overflow
         if(new_total_len > MAX_BUFFER_SIZE) {
             size_t keep_size = MAX_BUFFER_SIZE / 2;
             if(state->textBoxBuffer && state->buffer_length > keep_size) {
@@ -505,232 +603,261 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
                 state->buffer_length = keep_size;
                 new_total_len = keep_size + len + 1;
             } else {
-                free(state->textBoxBuffer);
-                state->textBoxBuffer = NULL;
+                if(state->textBoxBuffer) free(state->textBoxBuffer);
+                state->textBoxBuffer = malloc(BUFFER_CLEAR_SIZE);
+                if(state->textBoxBuffer) state->textBoxBuffer[0] = '\0';
                 state->buffer_length = 0;
                 new_total_len = len + 1;
             }
         }
 
-        // Allocate or reallocate buffer
-        char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
+        char* new_buffer = realloc(state->textBoxBuffer, new_total_len);
         if(!new_buffer) {
-            FURI_LOG_E("UART", "Failed to allocate memory for text concatenation");
+            FURI_LOG_E("UART", "Buffer realloc failed");
+            furi_mutex_release(buffer_mutex);
             return;
         }
 
         memcpy(new_buffer + state->buffer_length, buf, len);
         new_buffer[new_total_len - 1] = '\0';
-        
         state->textBoxBuffer = new_buffer;
         state->buffer_length = new_total_len - 1;
 
-        // Update text box
-        text_box_set_text(state->text_box, state->textBoxBuffer);
-        text_box_set_focus(state->text_box, TextBoxFocusEnd);
-
-        // Write to log file if enabled
-        if(state->uart_context->storageContext->log_file) {
-            storage_file_write(state->uart_context->storageContext->log_file, buf, len);
-        }
     } else {
-        // Use the state-based line processing
+        // Filtered handling with instance-specific state
         char output[RX_BUF_SIZE];
-        if (format_line_with_state(&line_state, (char*)buf, output, state->filter_config)) {
-            // Only handle complete lines
+        
+        if(format_line_with_state(&uart_line_state->line_state, (char*)buf, output, state->filter_config)) {
             size_t output_len = strlen(output);
-            size_t new_total_len = state->buffer_length + output_len + 2; // +2 for newline and null
+            if(output_len > 0) {  // Only process non-empty output
+                size_t new_total_len = state->buffer_length + output_len + 2;  // +2 for newline and null
 
-            // Handle buffer overflow
-            if(new_total_len > MAX_BUFFER_SIZE) {
-                size_t keep_size = MAX_BUFFER_SIZE / 2;
-                if(state->textBoxBuffer && state->buffer_length > keep_size) {
-                    memmove(state->textBoxBuffer, 
-                           state->textBoxBuffer + state->buffer_length - keep_size,
-                           keep_size);
-                    state->buffer_length = keep_size;
-                    new_total_len = keep_size + output_len + 2;
-                } else {
-                    free(state->textBoxBuffer);
-                    state->textBoxBuffer = NULL;
-                    state->buffer_length = 0;
-                    new_total_len = output_len + 2;
+                if(new_total_len > MAX_BUFFER_SIZE) {
+                    // Find last complete line before truncating
+                    char* last_nl = strrchr(state->textBoxBuffer, '\n');
+                    if(last_nl) {
+                        size_t keep_size = last_nl - state->textBoxBuffer + 1;
+                        memmove(state->textBoxBuffer, state->textBoxBuffer, keep_size);
+                        state->buffer_length = keep_size;
+                        new_total_len = keep_size + output_len + 2;
+                    } else {
+                        state->buffer_length = 0;
+                        new_total_len = output_len + 2;
+                    }
                 }
-            }
 
-            // Allocate or reallocate buffer
-            char *new_buffer = realloc(state->textBoxBuffer, new_total_len);
-            if(new_buffer) {
-                if(state->buffer_length == 0) {
-                    new_buffer[0] = '\0';
-                }
-                strcat(new_buffer, output);
-                strcat(new_buffer, "\n");
-                state->textBoxBuffer = new_buffer;
-                state->buffer_length = strlen(new_buffer);
-
-                // Update text box
-                text_box_set_text(state->text_box, state->textBoxBuffer);
-                text_box_set_focus(state->text_box, TextBoxFocusEnd);
-
-                // Write to log file if enabled
-                if(state->uart_context->storageContext->log_file) {
-                    storage_file_write(
-                        state->uart_context->storageContext->log_file, 
-                        output, 
-                        strlen(output));
-                    storage_file_write(
-                        state->uart_context->storageContext->log_file,
-                        "\n",
-                        1);
+                char* new_buffer = realloc(state->textBoxBuffer, new_total_len);
+                if(new_buffer) {
+                    if(state->buffer_length == 0) {
+                        new_buffer[0] = '\0';
+                    }
+                    state->textBoxBuffer = new_buffer;
+                    strcat(new_buffer, output);
+                    strcat(new_buffer, "\n");
+                    state->buffer_length = strlen(new_buffer);
                 }
             }
         }
     }
+
+    // Update text box based on view preference
+    if(state->textBoxBuffer && state->buffer_length > 0) {
+        bool view_from_start = state->settings.view_logs_from_start_index;
+        
+        if(view_from_start) {
+            text_box_set_text(state->text_box, state->textBoxBuffer);
+            text_box_set_focus(state->text_box, TextBoxFocusStart);
+        } else {
+            // Handle sign issues with explicit cast for arithmetic
+            size_t display_size = state->buffer_length;
+            if(display_size > (size_t)TEXT_BOX_STORE_SIZE - 1) {
+                display_size = (size_t)TEXT_BOX_STORE_SIZE - 1;
+            }
+            const char* display_start = state->textBoxBuffer + 
+                (state->buffer_length > display_size ? state->buffer_length - display_size : 0);
+            text_box_set_text(state->text_box, display_start);
+            text_box_set_focus(state->text_box, TextBoxFocusEnd);
+        }
+    }
+
+    // Handle logging to file
+    if(state->uart_context->storageContext && 
+       state->uart_context->storageContext->log_file) {
+        storage_file_write(state->uart_context->storageContext->log_file, buf, len);
+    }
+
+    furi_mutex_release(buffer_mutex);
 }
 // UART worker thread function
 static int32_t uart_worker(void *context) {
     UartContext *uart = (void *)context;
+    uint8_t line_buf[RX_BUF_SIZE];
+    size_t line_pos = 0;
+    
     while (1) {
-        uint32_t events =
-            furi_thread_flags_wait(WORKER_ALL_RX_EVENTS, FuriFlagWaitAny, FuriWaitForever);
+        uint32_t events = furi_thread_flags_wait(WORKER_ALL_RX_EVENTS, FuriFlagWaitAny, FuriWaitForever);
         furi_check((events & FuriFlagError) == 0);
-        if (events & WorkerEvtStop)
-            break;
+        
+        if (events & WorkerEvtStop) break;
+        
         if (events & WorkerEvtRxDone) {
             size_t len = furi_stream_buffer_receive(uart->rx_stream, uart->rx_buf, RX_BUF_SIZE, 0);
+            
             if (len > 0) {
-                if (uart->handle_rx_data_cb)
-                    uart->handle_rx_data_cb(uart->rx_buf, len, uart->state);
+                // Process received data
+                for(size_t i = 0; i < len; i++) {
+                    if(line_pos < sizeof(line_buf) - 1) {
+                        line_buf[line_pos++] = uart->rx_buf[i];
+                    }
+                    
+                    // If we hit a newline or buffer is full, process the line
+                    if(uart->rx_buf[i] == '\n' || line_pos >= sizeof(line_buf) - 1) {
+                        line_buf[line_pos] = '\0';
+                        
+                        if (uart->handle_rx_data_cb)
+                            uart->handle_rx_data_cb(line_buf, line_pos, uart->state);
+                            
+                        line_pos = 0;
+                    }
+                }
             }
         }
+        
         if (events & WorkerEvtPcapDone) {
-            size_t len =
-                furi_stream_buffer_receive(uart->pcap_stream, uart->rx_buf, RX_BUF_SIZE, 0);
+            size_t len = furi_stream_buffer_receive(uart->pcap_stream, uart->rx_buf, RX_BUF_SIZE, 0);
             if (len > 0) {
                 if (uart->handle_rx_pcap_cb)
                     uart->handle_rx_pcap_cb(uart->rx_buf, len, uart);
             }
         }
     }
-    // Removed stream buffer frees from here
     return 0;
 }
-
-UartContext *uart_init(AppState *state) {
-    uint32_t start_time = furi_get_tick();
+void update_text_box_view(AppState* state) {
+    if(!state || !state->text_box || !state->textBoxBuffer) return;
+    
+    bool view_from_start = state->settings.view_logs_from_start_index;
+    size_t content_length = strlen(state->textBoxBuffer);
+    
+    if(view_from_start) {
+        // Show from beginning
+        text_box_set_text(state->text_box, state->textBoxBuffer);
+        text_box_set_focus(state->text_box, TextBoxFocusStart);
+    } else {
+        // Show from end with proper size handling
+        size_t display_size = content_length;
+        if(display_size > (size_t)TEXT_BOX_STORE_SIZE - 1) {
+            display_size = (size_t)TEXT_BOX_STORE_SIZE - 1;
+        }
+        const char* display_start = state->textBoxBuffer + 
+            (content_length > display_size ? content_length - display_size : 0);
+        text_box_set_text(state->text_box, display_start);
+        text_box_set_focus(state->text_box, TextBoxFocusEnd);
+    }
+}
+UartContext* uart_init(AppState* state) {
     FURI_LOG_I("UART", "Starting UART initialization");
     
-    UartContext *uart = malloc(sizeof(UartContext));
-    if (!uart) {
+    UartContext* uart = malloc(sizeof(UartContext));
+    if(!uart) {
         FURI_LOG_E("UART", "Failed to allocate UART context");
         return NULL;
     }
     memset(uart, 0, sizeof(UartContext));
 
-    // Set state first for proper error handling
+    // Initialize mutex
+    if(!init_buffer_mutex()) {
+        free(uart);
+        return NULL;
+    }
+
     uart->state = state;
     uart->is_serial_active = false;
     uart->streams_active = false;
     uart->storage_active = false;
+    uart->pcap = false;
+    uart->mark_test_idx = 0;
 
-    // Stream initialization timing
-    uint32_t stream_start = furi_get_tick();
-    FURI_LOG_D("UART", "Starting stream allocation");
-    
+    // Stream initialization
     uart->rx_stream = furi_stream_buffer_alloc(RX_BUF_SIZE, 1);
     uart->pcap_stream = furi_stream_buffer_alloc(RX_BUF_SIZE, 1);
     uart->storage_stream = furi_stream_buffer_alloc(RX_BUF_SIZE, 1);
     uart->streams_active = (uart->rx_stream && uart->pcap_stream && uart->storage_stream);
-    
-    FURI_LOG_D("UART", "Stream allocation completed in %lums", furi_get_tick() - stream_start);
 
     // Set callbacks
     uart->handle_rx_data_cb = handle_uart_rx_data;
     uart->handle_rx_pcap_cb = uart_storage_rx_callback;
 
-    // Thread initialization timing
-    uint32_t thread_start = furi_get_tick();
-    FURI_LOG_D("UART", "Starting thread initialization");
-    
+    // Initialize thread
     uart->rx_thread = furi_thread_alloc();
-    if (uart->rx_thread) {
+    if(uart->rx_thread) {
         furi_thread_set_name(uart->rx_thread, "UART_Receive");
-        furi_thread_set_stack_size(uart->rx_thread, 2048);
+        furi_thread_set_stack_size(uart->rx_thread, 4096);
         furi_thread_set_context(uart->rx_thread, uart);
         furi_thread_set_callback(uart->rx_thread, uart_worker);
         furi_thread_start(uart->rx_thread);
-        FURI_LOG_D("UART", "Thread initialization completed in %lums", furi_get_tick() - thread_start);
-    } else {
-        FURI_LOG_E("UART", "Failed to allocate RX thread");
     }
 
-    // Storage initialization timing
-    uint32_t storage_start = furi_get_tick();
-    FURI_LOG_D("UART", "Starting storage initialization");
-    
+    // Initialize storage
     uart->storageContext = uart_storage_init(uart);
     uart->storage_active = (uart->storageContext != NULL);
-    
-    FURI_LOG_D("UART", "Storage initialization completed in %lums", furi_get_tick() - storage_start);
 
-    // Serial initialization timing
-    uint32_t serial_start = furi_get_tick();
-    FURI_LOG_D("UART", "Starting serial initialization");
-    
+    // Initialize serial
     uart->serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUsart);
-    if (uart->serial_handle) {
+    if(uart->serial_handle) {
         furi_hal_serial_init(uart->serial_handle, 115200);
         uart->is_serial_active = true;
         furi_hal_serial_async_rx_start(uart->serial_handle, uart_rx_callback, uart, false);
-        FURI_LOG_D("UART", "Serial initialization completed in %lums", furi_get_tick() - serial_start);
-    } else {
-        FURI_LOG_E("UART", "Failed to acquire serial handle");
     }
-
-    // Log final status
-    uint32_t total_time = furi_get_tick() - start_time;
-    FURI_LOG_I("UART", "UART initialization completed in %lums. Status:", total_time);
-    FURI_LOG_I("UART", "- Streams: %s", uart->streams_active ? "Active" : "Failed");
-    FURI_LOG_I("UART", "- Storage: %s", uart->storage_active ? "Active" : "Failed");
-    FURI_LOG_I("UART", "- Serial: %s", uart->is_serial_active ? "Active" : "Failed");
 
     return uart;
 }
-
-// Cleanup UART resources and stop UART thread
 void uart_free(UartContext *uart) {
-    if (!uart) return;
+    if(!uart) return;
+
+    // Clean up line state
+    if(uart->line_state) {
+        free(uart->line_state);
+        uart->line_state = NULL;
+    }
+
 
     // Stop receiving new data first
-    if (uart->serial_handle) {
+    if(uart->serial_handle) {
         furi_hal_serial_async_rx_stop(uart->serial_handle);
-        furi_delay_ms(10); // Small delay to ensure no more data is coming
+        furi_delay_ms(10);
+    }
+
+    // Clean up mutex if it exists
+    if(buffer_mutex) {
+        furi_mutex_free(buffer_mutex);
+        buffer_mutex = NULL;
     }
 
     // Stop thread and wait for it to finish
-    if (uart->rx_thread) {
+    if(uart->rx_thread) {
         furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtStop);
         furi_thread_join(uart->rx_thread);
         furi_thread_free(uart->rx_thread);
     }
 
     // Clean up serial after thread is stopped
-    if (uart->serial_handle) {
+    if(uart->serial_handle) {
         furi_hal_serial_deinit(uart->serial_handle);
         furi_hal_serial_control_release(uart->serial_handle);
     }
 
     // Free streams after everything is stopped
-    if (uart->rx_stream) furi_stream_buffer_free(uart->rx_stream);
-    if (uart->pcap_stream) furi_stream_buffer_free(uart->pcap_stream);
-    if (uart->storage_stream) furi_stream_buffer_free(uart->storage_stream);
+    if(uart->rx_stream) furi_stream_buffer_free(uart->rx_stream);
+    if(uart->pcap_stream) furi_stream_buffer_free(uart->pcap_stream);
+    if(uart->storage_stream) furi_stream_buffer_free(uart->storage_stream);
 
     // Clean up storage context last
-    if (uart->storageContext) uart_storage_free(uart->storageContext);
+    if(uart->storageContext) uart_storage_free(uart->storageContext);
 
     free(uart);
 }
+
 
 // Stop the UART thread (typically when exiting)
 void uart_stop_thread(UartContext *uart)
@@ -775,81 +902,87 @@ void uart_receive_data(
 bool uart_is_esp_connected(UartContext* uart) {
     FURI_LOG_D("UART", "Checking ESP connection...");
     
-    // Basic validation
-    if(!uart) {
-        FURI_LOG_E("UART", "UART context is NULL");
-        return false;
-    }
-    if(!uart->serial_handle) {
-        FURI_LOG_E("UART", "UART serial handle is NULL");
-        return false;
-    }
-    if(!uart->state) {
-        FURI_LOG_E("UART", "UART state is NULL");
+    if(!uart || !uart->serial_handle || !uart->state) {
+        FURI_LOG_E("UART", "Invalid UART context");
         return false;
     }
 
-    // Log initial state
-    FURI_LOG_D("UART", "Initial buffer state - length: %d, buffer: %p", 
-               uart->state->buffer_length,
-               uart->state->textBoxBuffer);
-
-    // Save and disable filtering
+    // Save state
     FilterConfig* saved_config = uart->state->filter_config;
     uart->state->filter_config = NULL;
-    FURI_LOG_D("UART", "Temporarily disabled filtering");
-
-    // Clear and initialize buffer
+    
+    // Initialize clean buffer with mutex protection
+    if(furi_mutex_acquire(buffer_mutex, MUTEX_TIMEOUT_MS) != FuriStatusOk) {
+        FURI_LOG_E("UART", "Failed to acquire mutex");
+        uart->state->filter_config = saved_config;
+        return false;
+    }
+    
     if(uart->state->textBoxBuffer) {
-        FURI_LOG_D("UART", "Freeing existing buffer");
         free(uart->state->textBoxBuffer);
     }
-    uart->state->textBoxBuffer = malloc(1);
+    uart->state->textBoxBuffer = malloc(RX_BUF_SIZE);  // Larger buffer
     if(!uart->state->textBoxBuffer) {
-        FURI_LOG_E("UART", "Failed to allocate buffer");
+        FURI_LOG_E("UART", "Buffer allocation failed");
+        furi_mutex_release(buffer_mutex);
         uart->state->filter_config = saved_config;
         return false;
     }
     uart->state->textBoxBuffer[0] = '\0';
     uart->state->buffer_length = 0;
-    FURI_LOG_D("UART", "Initialized new buffer");
+    furi_mutex_release(buffer_mutex);
 
-    // Send test command
-    const char* test_cmd = "stop\n";
-    uart_send(uart, (uint8_t*)test_cmd, strlen(test_cmd));
-    FURI_LOG_D("UART", "Sent info command (%d bytes)", strlen(test_cmd));
-
-    // Wait for response with more detailed logging
-    bool connected = false;
-    uint32_t start_time = furi_get_tick();
-    uint32_t check_count = 0;
+    // Try multiple test commands
+    const char* test_cmds[] = {
+        "stop\n",      // Stop any running operation
+    };
     
-    while(furi_get_tick() - start_time < ESP_CHECK_TIMEOUT_MS) {
-        check_count++;
-        if(uart->state->textBoxBuffer && uart->state->buffer_length > 0) {
-            FURI_LOG_D("UART", "Received response - length: %d, content: %.20s...", 
-                      uart->state->buffer_length,
-                      uart->state->textBoxBuffer);
-            connected = true;
-            break;
+    bool connected = false;
+    const uint32_t RETRY_COUNT = 3;
+    const uint32_t CMD_TIMEOUT_MS = 250; // Longer timeout per command
+    
+    for(uint32_t retry = 0; retry < RETRY_COUNT && !connected; retry++) {
+        for(size_t i = 0; i < COUNT_OF(test_cmds) && !connected; i++) {
+            // Clear buffer before each command
+            if(furi_mutex_acquire(buffer_mutex, MUTEX_TIMEOUT_MS) == FuriStatusOk) {
+                uart->state->textBoxBuffer[0] = '\0';
+                uart->state->buffer_length = 0;
+                furi_mutex_release(buffer_mutex);
+            }
+
+            // Send test command
+            uart_send(uart, (uint8_t*)test_cmds[i], strlen(test_cmds[i]));
+            FURI_LOG_D("UART", "Sent command: %s", test_cmds[i]);
+
+            uint32_t start_time = furi_get_tick();
+            while(furi_get_tick() - start_time < CMD_TIMEOUT_MS) {
+                if(furi_mutex_acquire(buffer_mutex, MUTEX_TIMEOUT_MS) == FuriStatusOk) {
+                    if(uart->state->textBoxBuffer && uart->state->buffer_length > 0) {
+                        FURI_LOG_D("UART", "Got response: %.20s", uart->state->textBoxBuffer);
+                        connected = true;
+                        furi_mutex_release(buffer_mutex);
+                        break;
+                    }
+                    furi_mutex_release(buffer_mutex);
+                }
+                furi_delay_ms(10);
+            }
         }
-        if(check_count % 10 == 0) { // Log every 100ms
-            FURI_LOG_D("UART", "Waiting for response... Time elapsed: %lums", 
-                      furi_get_tick() - start_time);
+
+        if(!connected && retry < RETRY_COUNT - 1) {
+            FURI_LOG_D("UART", "Retry %lu of %lu", retry + 1, RETRY_COUNT);
+            furi_delay_ms(100); // Delay between retries
         }
-        furi_delay_ms(10);
     }
 
-    // Log timeout if it occurs
-    if(!connected) {
-        FURI_LOG_W("UART", "Connection check timed out after %lums", 
-                   furi_get_tick() - start_time);
-    }
-
-    // Restore filtering
+    // Restore state
     uart->state->filter_config = saved_config;
-    FURI_LOG_D("UART", "Restored filtering configuration");
 
-    FURI_LOG_I("UART", "ESP connection check result: %s", connected ? "Connected" : "Not connected");
+    if(!connected) {
+        FURI_LOG_W("UART", "ESP connection check failed after all retries");
+    } else {
+        FURI_LOG_I("UART", "ESP connected successfully");
+    }
+
     return connected;
 }
