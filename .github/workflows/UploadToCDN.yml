@@ -57,4 +57,4 @@ jobs:
         R2_BUCKET: "spooksapi"
         R2_PATH: "assets/ghost_esp.fap"
       run: |
-        rclone copy ghost_esp.fap "cloudflare:${R2_BUCKET}/${R2_PATH}" --progress
+        rclone copyto ghost_esp.fap "cloudflare:${R2_BUCKET}/${R2_PATH}" --progress
