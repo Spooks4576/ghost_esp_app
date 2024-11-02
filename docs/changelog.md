@@ -65,14 +65,13 @@
 
 ## v1.0.8
 
-### 🔴 CRITICAL FIX
-- **Fixed PCAP file handling and storage system**
- - Resolved critical issue preventing PCAP capture
+### 🔴 CRITICAL FIX - PCAP capture
+ - Fixed PCAP file handling and storage system
  - Resolved PCAP file stream corruption issues
  - Added proper storage system initialization
- - Restored PCAP capture functionality
+ - Restored PCAP capture functionality (yes i promise i fixed it)
 
-### 🔄 Improvements  
+### Improvements  
 - Command history now persists when exiting to menu
 - Added error checking for storage operations
 
