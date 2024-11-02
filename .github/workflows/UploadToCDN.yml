@@ -53,5 +53,8 @@ jobs:
         echo "endpoint = https://fb5f7d31bedfe4f3538ddfa6db491962.r2.cloudflarestorage.com" >> ~/.config/rclone/rclone.conf
 
     - name: Upload file to Cloudflare R2
+      env:
+        R2_BUCKET: spooksapi
+        R2_PATH: assets
       run: |
-        rclone copy ghost_esp.fap cloudflare_r2:spooksapi/assets --progress
+        rclone copy ghost_esp.fap "cloudflare:${R2_BUCKET}/${R2_PATH}" --progress
