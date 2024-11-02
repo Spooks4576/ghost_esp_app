@@ -49,7 +49,7 @@ jobs:
         R2_PATH: "assets/ghost_esp.fap"
       run: |
         rclone copyto ghost_esp.fap "cloudflare:${R2_BUCKET}/${R2_PATH}" --s3-no-check-bucket --progress
-
+    
     - name: Notify Discord
       if: success()
       env:
@@ -68,6 +68,11 @@ jobs:
                 "name": "Download",
                 "value": "https://cdn.spookytools.com/assets/ghost_esp.fap",
                 "inline": true
+              },
+              {
+                "name": "Release Notes",
+                "value": "${{ steps.get_release.outputs.description }}",
+                "inline": false
               }
             ],
             "timestamp": "${TIMESTAMP}"
