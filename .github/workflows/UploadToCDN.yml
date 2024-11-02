@@ -1,37 +1,28 @@
 # .github/workflows/upload_to_r2.yml
 name: Upload latest release asset to Cloudflare R2
-
 on:
   workflow_dispatch:
-
 jobs:
-  upload-to-r2:
+  upload-and-notify:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Get the latest release asset
-      id: get_asset
+    - name: Get latest release info
+      id: get_release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         release=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/releases/latest)
         
-        asset_url=$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".fap")) | .browser_download_url')
-        
-        if [ -z "$asset_url" ]; then
-          echo "No .fap asset found in the latest release"
-          exit 1
-        fi
-        
-        echo "::set-output name=asset_url::$asset_url"
-        
-    - name: Download asset
+        echo "::set-output name=version::$(echo "$release" | jq -r '.tag_name')"
+        echo "::set-output name=asset_url::$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".fap")) | .browser_download_url')"
+
+    - name: Download FAP
       run: |
-        curl -L "${{ steps.get_asset.outputs.asset_url }}" -o ghost_esp.fap
+        curl -L "${{ steps.get_release.outputs.asset_url }}" -o ghost_esp.fap
 
     - name: Install rclone
       run: |
@@ -39,7 +30,7 @@ jobs:
         unzip rclone-current-linux-amd64.zip
         sudo install -o root -g root -m 0755 rclone-*-linux-amd64/rclone /usr/local/bin/rclone
 
-    - name: Configure rclone for Cloudflare R2
+    - name: Configure rclone
       env:
         R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
         R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -52,9 +43,40 @@ jobs:
         echo "secret_access_key = $R2_SECRET_ACCESS_KEY" >> ~/.config/rclone/rclone.conf
         echo "endpoint = https://fb5f7d31bedfe4f3538ddfa6db491962.r2.cloudflarestorage.com" >> ~/.config/rclone/rclone.conf
 
-    - name: Upload file to existing Cloudflare R2 bucket
+    - name: Upload to R2
       env:
         R2_BUCKET: "spooksapi"
         R2_PATH: "assets/ghost_esp.fap"
       run: |
         rclone copyto ghost_esp.fap "cloudflare:${R2_BUCKET}/${R2_PATH}" --s3-no-check-bucket --progress
+
+    - name: Notify Discord
+      if: success()
+      env:
+        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      run: |
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+        
+        payload=$(cat << EOF
+        {
+          "embeds": [{
+            "title": "🎉 New Release Available!",
+            "description": "Version ${{ steps.get_release.outputs.version }} has been released",
+            "color": 5814783,
+            "fields": [
+              {
+                "name": "Download",
+                "value": "https://cdn.spookytools.com/assets/ghost_esp.fap",
+                "inline": true
+              }
+            ],
+            "timestamp": "${TIMESTAMP}"
+          }]
+        }
+        EOF
+        )
+        
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -d "$payload" \
+          "$DISCORD_WEBHOOK_URL"
