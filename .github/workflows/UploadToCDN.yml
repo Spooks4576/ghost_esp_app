@@ -59,9 +59,8 @@ jobs:
         
         payload=$(cat << EOF
         {
-          "content": "@Announcements",
           "embeds": [{
-            "title": "🎉 New Release Available!",
+            "title": "🎉 New Flipper App Release Available!",
             "description": "Version ${{ steps.get_release.outputs.version }} has been released",
             "color": 5814783,
             "fields": [
