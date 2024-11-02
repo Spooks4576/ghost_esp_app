@@ -60,6 +60,9 @@
 - Added view log from start/end configuration setting
 - Added line buffering with overflow detection, boundary protection and pre-flush on mode switches
 
+## v1.0.7a
+- Disable the expansion interface before trying to use UART
+
 ## TODO
 - Replaced select a utility text with prompt to show NEW Help Menu
 - IMPROVE optional filtering to UART output
