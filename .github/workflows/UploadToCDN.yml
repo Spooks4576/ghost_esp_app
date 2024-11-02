@@ -1,0 +1,57 @@
+# .github/workflows/upload_to_r2.yml
+name: Upload latest release asset to Cloudflare R2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upload-to-r2:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Get the latest release asset
+      id: get_asset
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        release=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          https://api.github.com/repos/${{ github.repository }}/releases/latest)
+        
+        asset_url=$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".fap")) | .browser_download_url')
+        
+        if [ -z "$asset_url" ]; then
+          echo "No .fap asset found in the latest release"
+          exit 1
+        fi
+        
+        echo "::set-output name=asset_url::$asset_url"
+        
+    - name: Download asset
+      run: |
+        curl -L "${{ steps.get_asset.outputs.asset_url }}" -o ghost_esp.fap
+
+    - name: Install rclone
+      run: |
+        curl -O https://downloads.rclone.org/rclone-current-linux-amd64.zip
+        unzip rclone-current-linux-amd64.zip
+        sudo install -o root -g root -m 0755 rclone-*-linux-amd64/rclone /usr/local/bin/rclone
+
+    - name: Configure rclone for Cloudflare R2
+      env:
+        R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+        R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      run: |
+        mkdir -p ~/.config/rclone
+        echo "[cloudflare]" > ~/.config/rclone/rclone.conf
+        echo "type = s3" >> ~/.config/rclone/rclone.conf
+        echo "provider = Cloudflare" >> ~/.config/rclone/rclone.conf
+        echo "access_key_id = $R2_ACCESS_KEY_ID" >> ~/.config/rclone/rclone.conf
+        echo "secret_access_key = $R2_SECRET_ACCESS_KEY" >> ~/.config/rclone/rclone.conf
+        echo "endpoint = https://fb5f7d31bedfe4f3538ddfa6db491962.r2.cloudflarestorage.com" >> ~/.config/rclone/rclone.conf
+
+    - name: Upload file to Cloudflare R2
+      run: |
+        rclone copy ghost_esp.fap cloudflare:spooksapi/assets/ghost_esp.fap --progress
