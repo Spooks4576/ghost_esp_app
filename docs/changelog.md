@@ -33,7 +33,6 @@
 - Added 'App Info' Button in Settings
 - Misc Changes (mostly to UI)
 
-
 ## v1.0.5
 - Commands will silently fail if UART isn't working rather than crashing
 - Fixed double-free memory issue by removing stream buffer cleanup from the worker thread
@@ -42,7 +41,6 @@
 - Serial operations don't block app startup
 - Optimized storage initialization by deferring file operations until needed
 - Improved directory creation efficiency in storage handling
-
 
 ## v1.0.6
 - Replaced 'Info' command in ESP Check with 'Stop'
@@ -54,10 +52,15 @@
 - Renamed CONF menu option to SET to better align with actual Settings menu since it's header is "Settings" and there is a configuration submenu
 - Replaced textbox for ESP Connection Check with scrollable Confirmation View
 
-## TODO
+## v1.0.7
+- Increased buffers and stacks: MAX_BUFFER_SIZE to 8KB, INITIAL_BUFFER_SIZE to 4KB, BUFFER_CLEAR_SIZE to 128B, uart/app stacks to 4KB/6KB
+- Added buffer_mutex with proper timeout handling
+- Added Marauder-style data handling 
+- Improved ESP connection reliability
+- Added view log from start/end configuration setting
+- Added line buffering with overflow detection, boundary protection and pre-flush on mode switches
 
+## TODO
 - Replaced select a utility text with prompt to show NEW Help Menu
-- Add view log from start/end configuration setting
-- Settings get sent to board and get pulled from on ESP Check or Init
 - IMPROVE optional filtering to UART output
 - Improve directory organisation!!!!!!!!!!!!!!!!!!!!!!!!!!!!

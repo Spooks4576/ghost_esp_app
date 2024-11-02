@@ -11,6 +11,7 @@ typedef enum {
     SETTING_ENABLE_RANDOM_BLE_MAC,
     SETTING_STOP_ON_BACK,
     SETTING_ENABLE_FILTERING,
+    SETTING_VIEW_LOGS_FROM_START,
     SETTING_SHOW_INFO,
     SETTING_REBOOT_ESP,
     SETTING_CLEAR_LOGS,
@@ -50,6 +51,7 @@ typedef struct {
     uint8_t enable_random_ble_mac_index;
     uint8_t stop_on_back_index;
     uint8_t enable_filtering_index;
+    uint8_t view_logs_from_start_index; 
     uint8_t reboot_esp_index;
     uint8_t clear_logs_index;
     uint8_t clear_nvs_index;

@@ -13,6 +13,7 @@ struct UartStorageContext {
     UartContext* parentContext;
     bool HasOpenedFile;
     bool IsWritingToFile;
+    bool view_logs_from_start;
 };
 
 UartStorageContext* uart_storage_init(UartContext* parentContext);

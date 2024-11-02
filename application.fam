@@ -3,12 +3,13 @@
 App(
     appid="ghost_esp",  # Must be unique
     name="[ESP32] Ghost ESP",  # Displayed in menus
-    apptype=FlipperAppType.EXTERNAL,
+    apptype=FlipperAppType.EXTERNAL, # type: ignore
     entry_point="ghost_esp_app",
-    stack_size=3 * 1024,
+    stack_size=6 * 1024,
     fap_category="GPIO/ESP",
     # Optional values
-    fap_version="0.1",
+    icon="A_GhostESP_14",
+    fap_version="1.0.7",
     fap_icon="ghost_esp.png",  # 10x10 1-bit PNG
     fap_icon_assets="images",  # Image assets to compile for this application
 )
