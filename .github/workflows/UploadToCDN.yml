@@ -54,5 +54,4 @@ jobs:
 
     - name: Upload file to Cloudflare R2
       run: |
-        rclone delete cloudflare:spooksapi/assets/ghost_esp.fap --quiet || true
-        rclone copy ghost_esp.fap cloudflare:spooksapi/assets/ --progress
+        rclone ls cloudflare:spooksapi
