@@ -63,6 +63,19 @@
 ## v1.0.7a
 - Disable the expansion interface before trying to use UART
 
+## v1.0.8
+
+### 🔴 CRITICAL FIX
+- **Fixed PCAP file handling and storage system**
+ - Resolved critical issue preventing PCAP capture
+ - Resolved PCAP file stream corruption issues
+ - Added proper storage system initialization
+ - Restored PCAP capture functionality
+
+### 🔄 Improvements  
+- Command history now persists when exiting to menu
+- Added error checking for storage operations
+
 ## TODO
 - Replaced select a utility text with prompt to show NEW Help Menu
 - IMPROVE optional filtering to UART output
