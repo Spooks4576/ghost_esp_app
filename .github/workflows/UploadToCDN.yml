@@ -59,6 +59,7 @@ jobs:
         
         payload=$(cat << EOF
         {
+          "content": "<@&Announcements> <@&News Pings>",
           "embeds": [{
             "title": "🎉 New Release Available!",
             "description": "Version ${{ steps.get_release.outputs.version }} has been released",
