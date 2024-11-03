@@ -59,41 +59,47 @@ jobs:
       run: |
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
         
-        # Truncate description if too long
+        # Truncate description if too long and properly escape for JSON
         DESCRIPTION="${{ steps.get_release.outputs.description }}"
         if [ ${#DESCRIPTION} -gt 1024 ]; then
           DESCRIPTION="${DESCRIPTION:0:1021}..."
         fi
         
+        # Properly escape the description for JSON
+        DESCRIPTION=$(echo "$DESCRIPTION" | jq -R -s '.')
+        
         # Clean version number
         VERSION=$(echo "${{ steps.get_release.outputs.version }}" | sed 's/^v//')
         
-        payload=$(cat << EOF
-        {
-          "embeds": [{
-            "title": "Ghost ESP Flipper App Update",
-            "description": "Version ${VERSION} is now available",
-            "color": 8847615,
-            "fields": [
-              {
-                "name": "Download Latest Version",
-                "value": "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
-                "inline": false
+        payload=$(jq -n \
+          --arg title "Ghost ESP Update" \
+          --arg desc "Version ${VERSION} is now available" \
+          --arg download_url "https://cdn.spookytools.com/assets/ghost_esp.fap" \
+          --arg changes "$DESCRIPTION" \
+          --arg timestamp "$TIMESTAMP" \
+          '{
+            "embeds": [{
+              "title": $title,
+              "description": $desc,
+              "color": 8847615,
+              "fields": [
+                {
+                  "name": "Download Latest Version",
+                  "value": "[Click here to download](" + $download_url + ")",
+                  "inline": false
+                },
+                {
+                  "name": "Changes in this version",
+                  "value": $changes,
+                  "inline": false
+                }
+              ],
+              "footer": {
+                "text": "Ghost ESP for Flipper Zero"
               },
-              {
-                "name": "Changes in this version",
-                "value": "$DESCRIPTION",
-                "inline": false
-              }
-            ],
-            "footer": {
-              "text": "Ghost ESP for Flipper Zero"
-            },
-            "timestamp": "${TIMESTAMP}"
-          }]
-        }
-        EOF
-        )
+              "timestamp": $timestamp
+            }]
+          }')
         
         # Send to Discord with error handling
         response=$(curl -s -w "\n%{http_code}" -X POST \
