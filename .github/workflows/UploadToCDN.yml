@@ -1,5 +1,5 @@
 # .github/workflows/upload_to_r2.yml
-name: Upload latest release asset to Cloudflare R2
+name: Upload and Notify
 on:
   workflow_dispatch:
 jobs:
@@ -17,8 +17,10 @@ jobs:
         release=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/releases/latest)
         
-        echo "::set-output name=version::$(echo "$release" | jq -r '.tag_name')"
-        echo "::set-output name=asset_url::$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".fap")) | .browser_download_url')"
+        echo "version=$(echo "$release" | jq -r '.tag_name')" >> $GITHUB_OUTPUT
+        echo "asset_url=$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".fap")) | .browser_download_url')" >> $GITHUB_OUTPUT
+        description=$(echo "$release" | jq -r '.body' | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
+        echo "description=$description" >> $GITHUB_OUTPUT
 
     - name: Download FAP
       run: |
@@ -57,31 +59,53 @@ jobs:
       run: |
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
         
+        # Truncate description if too long
+        DESCRIPTION="${{ steps.get_release.outputs.description }}"
+        if [ ${#DESCRIPTION} -gt 1024 ]; then
+          DESCRIPTION="${DESCRIPTION:0:1021}..."
+        fi
+        
+        # Clean version number
+        VERSION=$(echo "${{ steps.get_release.outputs.version }}" | sed 's/^v//')
+        
         payload=$(cat << EOF
         {
           "embeds": [{
-            "title": "🎉 New Flipper App Release Available!",
-            "description": "Version ${{ steps.get_release.outputs.version }} has been released",
-            "color": 5814783,
+            "title": "Ghost ESP Flipper App Update",
+            "description": "Version ${VERSION} is now available",
+            "color": 8847615,
             "fields": [
               {
-                "name": "Download",
-                "value": "https://cdn.spookytools.com/assets/ghost_esp.fap",
-                "inline": true
+                "name": "Download Latest Version",
+                "value": "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
+                "inline": false
               },
               {
-                "name": "Release Notes",
-                "value": "${{ steps.get_release.outputs.description }}",
+                "name": "Changes in this version",
+                "value": "$DESCRIPTION",
                 "inline": false
               }
             ],
+            "footer": {
+              "text": "Ghost ESP for Flipper Zero"
+            },
             "timestamp": "${TIMESTAMP}"
           }]
         }
         EOF
         )
         
-        curl -X POST \
+        # Send to Discord with error handling
+        response=$(curl -s -w "\n%{http_code}" -X POST \
           -H "Content-Type: application/json" \
           -d "$payload" \
-          "$DISCORD_WEBHOOK_URL"
+          "$DISCORD_WEBHOOK_URL")
+        
+        status_code=$(echo "$response" | tail -n1)
+        response_body=$(echo "$response" | sed '$d')
+        
+        if [ "$status_code" -ne 204 ]; then
+          echo "Error sending Discord notification. Status code: $status_code"
+          echo "Response: $response_body"
+          exit 1
+        fi
