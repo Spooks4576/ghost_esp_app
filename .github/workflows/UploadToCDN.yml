@@ -60,52 +60,52 @@ jobs:
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       run: |
-        # Get current UTC timestamp
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+        # Create the Discord message payload
         VERSION="${{ steps.get_release.outputs.version }}"
         VERSION="${VERSION#v}"  # Remove leading 'v' if present
-        DESCRIPTION="${{ steps.get_release.outputs.description }}"
         
-        # Truncate description if needed
+        DESCRIPTION="${{ steps.get_release.outputs.description }}"
         if [ ${#DESCRIPTION} -gt 1024 ]; then
           DESCRIPTION="${DESCRIPTION:0:1021}..."
         fi
         
-        # Construct the entire payload using jq
-        payload=$(jq -n \
-          --arg timestamp "$TIMESTAMP" \
-          --arg version "$VERSION" \
-          --arg description "$DESCRIPTION" \
-          '{
-            embeds: [{
-              title: "Ghost ESP Flipper App Update",
-              description: "Version " + $version + " is now available",
-              color: 8847615,
-              fields: [
-                {
-                  name: "Download Latest Version",
-                  value: "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
-                  inline: false
-                },
-                {
-                  name: "Changes in this version",
-                  value: $description,
-                  inline: false
-                }
-              ],
-              footer: {
-                text: "Ghost ESP for Flipper Zero"
+        # Write the payload to a file using pure JSON
+        cat > payload.json << 'EOF'
+        {
+          "embeds": [{
+            "title": "Ghost ESP Flipper App Update",
+            "description": "Version VERSION_PLACEHOLDER is now available",
+            "color": 8847615,
+            "fields": [
+              {
+                "name": "Download Latest Version",
+                "value": "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
+                "inline": false
               },
-              timestamp: $timestamp
-            }]
-          }')
-        
-        # Send to Discord
-        curl -s -H "Content-Type: application/json" \
-             -d "$payload" \
-             "$DISCORD_WEBHOOK_URL" || {
-          echo "Failed to send Discord notification"
-          echo "Payload was:"
-          echo "$payload"
-          exit 1
+              {
+                "name": "Changes in this version",
+                "value": "DESCRIPTION_PLACEHOLDER",
+                "inline": false
+              }
+            ],
+            "footer": {
+              "text": "Ghost ESP for Flipper Zero"
+            },
+            "timestamp": "TIMESTAMP_PLACEHOLDER"
+          }]
         }
+EOF
+        
+        # Use jq to safely inject our variables
+        jq --arg ver "$VERSION" \
+           --arg desc "$DESCRIPTION" \
+           --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")" \
+           '.embeds[0].description = "Version " + $ver + " is now available" |
+            .embeds[0].fields[1].value = $desc |
+            .embeds[0].timestamp = $ts' \
+            payload.json > payload_final.json
+        
+        # Send to Discord using the file
+        curl -H "Content-Type: application/json" \
+             -d @payload_final.json \
+             "$DISCORD_WEBHOOK_URL"
