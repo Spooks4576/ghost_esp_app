@@ -816,18 +816,15 @@ void submenu_callback(void* context, uint32_t index) {
 
 bool back_event_callback(void* context) {
     AppState* state = (AppState*)context;
-
-    // Get the current view ID
     uint32_t current_view = state->current_view;
 
-    // Do not consume the back button event if the current view is the confirmation view
-    if(current_view == 7) {  // 7 is the ID for the confirmation view
-        // Allow the confirmation view's input callback to handle the back button
+    // Allow confirmation view to handle its own back button
+    if(current_view == 7) {
         return false;
     }
 
     if(current_view == 5) {  // Text box view
-        FURI_LOG_D("Ghost ESP", "Stopping Thread");
+        FURI_LOG_D("Ghost ESP", "Stopping Operations");
 
         // Cleanup text buffer
         if(state->textBoxBuffer) {
@@ -839,20 +836,53 @@ bool back_event_callback(void* context) {
             state->buffer_length = 0;
         }
 
-        // Only send stop commands if enabled in settings
+        // Send stop commands if enabled in settings
         if(state->settings.stop_on_back_index) {
-            // Send all relevant stop commands
+            // First stop any packet captures to ensure proper file saving
+            send_uart_command("capture -stop\n", state);
+            furi_delay_ms(100); // Give time for file operation
+
+            // Reset PCAP state if needed
+            if(state->uart_context->pcap) {
+                state->uart_context->pcap = false;
+                furi_stream_buffer_reset(state->uart_context->pcap_stream);
+                furi_delay_ms(50); // Allow buffer cleanup
+            }
+
+            // Then stop various operations in a logical order
+            send_uart_command("stopscan\n", state);
+            furi_delay_ms(50);
+            
+            send_uart_command("stopspam\n", state);
+            furi_delay_ms(50);
+            
+            send_uart_command("stopdeauth\n", state);
+            furi_delay_ms(50);
+            
+            send_uart_command("stopportal\n", state);
+            furi_delay_ms(50);
+            
+            send_uart_command("blescan -s\n", state);
+            furi_delay_ms(50);
+            
+            // Final general stop
             send_uart_command("stop\n", state);
+            furi_delay_ms(50);
         }
 
-        // Close any open files
-        if(state->uart_context->storageContext->current_file &&
-           storage_file_is_open(state->uart_context->storageContext->current_file)) {
-            state->uart_context->storageContext->HasOpenedFile = false;
-            FURI_LOG_D("DEBUG", "Storage File Closed");
+        // Close any open files with proper checking
+        if(state->uart_context->storageContext) {
+            if(state->uart_context->storageContext->current_file &&
+               storage_file_is_open(state->uart_context->storageContext->current_file)) {
+                // Give time for final writes
+                furi_delay_ms(100);
+                storage_file_close(state->uart_context->storageContext->current_file);
+                state->uart_context->storageContext->HasOpenedFile = false;
+                FURI_LOG_D("DEBUG", "Storage File Closed");
+            }
         }
 
-        // Return to previous view
+        // Return to appropriate previous view
         switch(state->previous_view) {
             case 1: show_wifi_menu(state); break;
             case 2: show_ble_menu(state); break;
@@ -860,7 +890,7 @@ bool back_event_callback(void* context) {
             default: show_main_menu(state); break;
         }
         state->current_view = state->previous_view;
-    } else if(current_view == 8) { // Settings actions menu
+    } else if(current_view == 8) { // Settings menu
         show_main_menu(state);
         state->current_view = 0;
     } else if(current_view != 0) {
@@ -870,7 +900,6 @@ bool back_event_callback(void* context) {
         view_dispatcher_stop(state->view_dispatcher);
     }
 
-    // Consume the back button event for all views except the confirmation view
     return true;
 }
 
