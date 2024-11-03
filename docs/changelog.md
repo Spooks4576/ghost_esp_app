@@ -76,7 +76,15 @@
 - Filtering majorly improved
 - Improved stop on back to be much more reliable by added type-specific stop commands with delays between operations
 
+
+## v1.0.9
+- Fixed log file corruption when stopping captures
+- Added proper bounds checking for oversized messages
+- Improved text display buffer management
+- Added automatic prefix tagging for WiFi, BLE and system messages
+- Improved storage init speed
+
 ## TODO
 - Replaced select a utility text with prompt to show NEW Help Menu
-- IMPROVE optional filtering to UART output
+- FINALISE optional filtering to UART output
 - Improve directory organisation!!!!!!!!!!!!!!!!!!!!!!!!!!!!
