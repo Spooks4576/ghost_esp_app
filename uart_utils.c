@@ -7,7 +7,7 @@
 #include <furi_hal_serial.h>
 
 #define WORKER_ALL_RX_EVENTS (WorkerEvtStop | WorkerEvtRxDone | WorkerEvtPcapDone)
-
+#define PCAP_WRITE_CHUNK_SIZE 1024
 #define AP_LIST_TIMEOUT_MS 5000
 #define INITIAL_BUFFER_SIZE 2048
 #define BUFFER_GROWTH_FACTOR 1.5
@@ -42,102 +42,52 @@ static bool init_buffer_mutex() {
 
 static void uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
     UartContext* uart = (UartContext*)context;
-    static uint8_t rx_buf[256];  // Increased buffer size further for safety
-    static size_t rx_buf_pos = 0;
     
     if(event == FuriHalSerialRxEventData) {
         uint8_t data = furi_hal_serial_async_rx(handle);
         const char* mark_begin = "[BUF/BEGIN]";
         const char* mark_close = "[BUF/CLOSE]";
-        bool data_handled = false;
 
-        // Handle marker detection first
-        if(uart->mark_test_idx > 0) {
-            if(uart->mark_test_idx < sizeof(uart->mark_test_buf) - 1) {
-                // Still collecting potential marker
-                if(data == mark_begin[uart->mark_test_idx] ||
-                   data == mark_close[uart->mark_test_idx]) {
-                    uart->mark_test_buf[uart->mark_test_idx++] = data;
-                    if(uart->mark_test_idx == 11) {
-                        // Complete marker - check type and flush buffer first
-                        if(rx_buf_pos > 0) {
-                            size_t sent = furi_stream_buffer_send(uart->rx_stream, rx_buf, rx_buf_pos, 0);
-                            if(sent != rx_buf_pos) {
-                                FURI_LOG_E("UART", "Buffer overflow - lost %d bytes", rx_buf_pos - sent);
-                            }
-                            furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
-                            rx_buf_pos = 0;
-                        }
-                        
-                        if(!memcmp(uart->mark_test_buf, mark_begin, 11)) {
-                            uart->pcap = true;
-                        } else if(!memcmp(uart->mark_test_buf, mark_close, 11)) {
-                            uart->pcap = false;
-                        }
-                        uart->mark_test_idx = 0;
-                    }
-                    data_handled = true;
-                } else {
-                    // Marker mismatch - add to appropriate buffer
-                    if(uart->pcap) {
-                        size_t sent = furi_stream_buffer_send(uart->pcap_stream, uart->mark_test_buf,
-                                              uart->mark_test_idx, 0);
-                        if(sent != uart->mark_test_idx) {
-                            FURI_LOG_E("UART", "PCAP buffer overflow - lost %d bytes", 
-                                     uart->mark_test_idx - sent);
-                        }
-                        furi_thread_flags_set(furi_thread_get_id(uart->rx_thread),
-                                            WorkerEvtPcapDone);
-                    } else {
-                        // Add to line buffer
-                        for(size_t i = 0; i < uart->mark_test_idx; i++) {
-                            if(rx_buf_pos < sizeof(rx_buf)) {
-                                rx_buf[rx_buf_pos++] = uart->mark_test_buf[i];
-                            }
-                        }
+        if(uart->mark_test_idx != 0) {
+            if(data == mark_begin[uart->mark_test_idx] || 
+               data == mark_close[uart->mark_test_idx]) {
+                uart->mark_test_buf[uart->mark_test_idx++] = data;
+                
+                if(uart->mark_test_idx == sizeof(uart->mark_test_buf)) {
+                    if(!memcmp(uart->mark_test_buf, (void*)mark_begin, sizeof(uart->mark_test_buf))) {
+                        uart->pcap = true;
+                    } else if(!memcmp(uart->mark_test_buf, (void*)mark_close, sizeof(uart->mark_test_buf))) {
+                        uart->pcap = false;
                     }
                     uart->mark_test_idx = 0;
                 }
+                return;
             } else {
-                // Buffer overflow protection
+                if(uart->pcap) {
+                    furi_stream_buffer_send(uart->pcap_stream, uart->mark_test_buf, uart->mark_test_idx, 0);
+                    furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
+                } else {
+                    furi_stream_buffer_send(uart->rx_stream, uart->mark_test_buf, uart->mark_test_idx, 0);
+                    furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
+                }
                 uart->mark_test_idx = 0;
             }
         }
 
-        // Handle start of new marker
-        if(!data_handled && data == mark_begin[0]) {
-            uart->mark_test_buf[0] = data;
-            uart->mark_test_idx = 1;
-            data_handled = true;
-        }
-
-        // Handle regular data
-        if(!data_handled) {
+        if(data == mark_begin[0]) {
+            uart->mark_test_buf[uart->mark_test_idx++] = data;
+        } else {
             if(uart->pcap) {
-                size_t sent = furi_stream_buffer_send(uart->pcap_stream, &data, 1, 0);
-                if(sent != 1) {
-                    FURI_LOG_E("UART", "PCAP buffer overflow - lost byte");
-                }
+                furi_stream_buffer_send(uart->pcap_stream, &data, 1, 0);
                 furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtPcapDone);
             } else {
-                // Add to line buffer
-                if(rx_buf_pos < sizeof(rx_buf)) {
-                    rx_buf[rx_buf_pos++] = data;
-                }
-                
-                // Send buffer when we have a complete line or buffer is getting full
-                if(data == '\n' || rx_buf_pos >= (sizeof(rx_buf) * 3/4)) {
-                    size_t sent = furi_stream_buffer_send(uart->rx_stream, rx_buf, rx_buf_pos, 0);
-                    if(sent != rx_buf_pos) {
-                        FURI_LOG_E("UART", "Buffer overflow - lost %d bytes", rx_buf_pos - sent);
-                    }
-                    furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
-                    rx_buf_pos = 0;
-                }
+                furi_stream_buffer_send(uart->rx_stream, &data, 1, 0);
+                furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtRxDone);
             }
         }
     }
 }
+
 static bool process_chunk(LineProcessingState* state, const char* input, 
                          char* output, size_t output_size,
                          size_t* output_len) {
@@ -689,50 +639,52 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
     furi_mutex_release(buffer_mutex);
 }
 // UART worker thread function
-static int32_t uart_worker(void *context) {
-    UartContext *uart = (void *)context;
-    uint8_t line_buf[RX_BUF_SIZE];
-    size_t line_pos = 0;
-    
-    while (1) {
-        uint32_t events = furi_thread_flags_wait(WORKER_ALL_RX_EVENTS, FuriFlagWaitAny, FuriWaitForever);
+static int32_t uart_worker(void* context) {
+    UartContext* uart = (void*)context;
+
+    while(1) {
+        uint32_t events = furi_thread_flags_wait(
+            WORKER_ALL_RX_EVENTS, 
+            FuriFlagWaitAny, 
+            FuriWaitForever);
+            
         furi_check((events & FuriFlagError) == 0);
         
-        if (events & WorkerEvtStop) break;
+        if(events & WorkerEvtStop) break;
         
-        if (events & WorkerEvtRxDone) {
-            size_t len = furi_stream_buffer_receive(uart->rx_stream, uart->rx_buf, RX_BUF_SIZE, 0);
-            
-            if (len > 0) {
-                // Process received data
-                for(size_t i = 0; i < len; i++) {
-                    if(line_pos < sizeof(line_buf) - 1) {
-                        line_buf[line_pos++] = uart->rx_buf[i];
-                    }
-                    
-                    // If we hit a newline or buffer is full, process the line
-                    if(uart->rx_buf[i] == '\n' || line_pos >= sizeof(line_buf) - 1) {
-                        line_buf[line_pos] = '\0';
-                        
-                        if (uart->handle_rx_data_cb)
-                            uart->handle_rx_data_cb(line_buf, line_pos, uart->state);
-                            
-                        line_pos = 0;
-                    }
-                }
+        if(events & WorkerEvtRxDone) {
+            size_t len = furi_stream_buffer_receive(
+                uart->rx_stream, 
+                uart->rx_buf, 
+                RX_BUF_SIZE, 
+                0);
+                
+            if(len > 0) {
+                if(uart->handle_rx_data_cb)
+                    uart->handle_rx_data_cb(uart->rx_buf, len, uart->state);
             }
         }
         
-        if (events & WorkerEvtPcapDone) {
-            size_t len = furi_stream_buffer_receive(uart->pcap_stream, uart->rx_buf, RX_BUF_SIZE, 0);
-            if (len > 0) {
-                if (uart->handle_rx_pcap_cb)
+        if(events & WorkerEvtPcapDone) {
+            size_t len = furi_stream_buffer_receive(
+                uart->pcap_stream, 
+                uart->rx_buf, 
+                RX_BUF_SIZE, 
+                0);
+                
+            if(len > 0) {
+                if(uart->handle_rx_pcap_cb)
                     uart->handle_rx_pcap_cb(uart->rx_buf, len, uart);
             }
         }
     }
+
+    furi_stream_buffer_free(uart->rx_stream);
+    furi_stream_buffer_free(uart->pcap_stream);
+
     return 0;
 }
+
 void update_text_box_view(AppState* state) {
     if(!state || !state->text_box || !state->textBoxBuffer) return;
     
@@ -875,29 +827,7 @@ void uart_send(UartContext *uart, const uint8_t *data, size_t len) {
         furi_hal_serial_tx(uart->serial_handle, data, len);
     }
 }
-void uart_receive_data(
-    UartContext *uart,
-    ViewDispatcher *view_dispatcher,
-    AppState *state,
-    const char *prefix,
-    const char *extension,
-    const char *TargetFolder)
-{
-    UNUSED(uart);
-    text_box_set_text(state->text_box, "");
-    text_box_set_focus(state->text_box, TextBoxFocusEnd);
-    if (strlen(prefix) > 1)
-    {
-        uart->storageContext->HasOpenedFile = sequential_file_open(
-            uart->storageContext->storage_api,
-            uart->storageContext->current_file,
-            TargetFolder,
-            prefix,
-            extension);
-    }
-    view_dispatcher_switch_to_view(view_dispatcher, 5);
-    state->current_view = 5;
-}
+
 
 bool uart_is_esp_connected(UartContext* uart) {
     FURI_LOG_D("UART", "Checking ESP connection...");
@@ -985,4 +915,53 @@ bool uart_is_esp_connected(UartContext* uart) {
     }
 
     return connected;
+}
+void uart_receive_data(
+    UartContext* uart,
+    ViewDispatcher* view_dispatcher,
+    AppState* state,
+    const char* prefix,
+    const char* extension,
+    const char* TargetFolder) {
+    
+    if(!uart || !uart->storageContext || !view_dispatcher || !state || !prefix || !extension || !TargetFolder) {
+        FURI_LOG_E("UART", "Invalid parameters in uart_receive_data");
+        return;
+    }
+
+    // Safely disable PCAP mode if active
+    if(uart->pcap) {
+        uart->pcap = false;
+        furi_delay_ms(10); // Allow buffers to flush
+        if(uart->pcap_stream) {
+            furi_stream_buffer_reset(uart->pcap_stream);
+        }
+    }
+    
+    text_box_set_text(state->text_box, "");
+    text_box_set_focus(state->text_box, TextBoxFocusEnd);
+
+    if(strlen(prefix) > 1) {
+        // Close any existing file first
+        if(uart->storageContext->HasOpenedFile && uart->storageContext->current_file) {
+            storage_file_close(uart->storageContext->current_file);
+            uart->storageContext->HasOpenedFile = false;
+        }
+
+        // Open new file with proper error handling
+        uart->storageContext->HasOpenedFile = sequential_file_open(
+            uart->storageContext->storage_api,
+            uart->storageContext->current_file,
+            TargetFolder,
+            prefix,
+            extension);
+            
+        if(!uart->storageContext->HasOpenedFile) {
+            FURI_LOG_E("UART", "Failed to open file for writing");
+            return;
+        }
+    }
+
+    view_dispatcher_switch_to_view(view_dispatcher, 5);
+    state->current_view = 5;
 }

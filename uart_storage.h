@@ -4,7 +4,6 @@
 #include <furi.h>
 #include <storage/storage.h>
 
-
 struct UartStorageContext {
     Storage* storage_api;
     File* current_file;

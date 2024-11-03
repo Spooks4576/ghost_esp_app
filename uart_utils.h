@@ -11,8 +11,9 @@
 #include "menu.h"
 #include "uart_storage.h"
 #define TEXT_BOX_STORE_SIZE (4096)  // 4KB text box buffer size
-
-#define RX_BUF_SIZE                   256
+#define RX_BUF_SIZE 1024
+#define PCAP_BUF_SIZE 4096
+#define STORAGE_BUF_SIZE 4096
 #define GHOST_ESP_APP_FOLDER          "/ext/apps_data/ghost_esp"
 #define GHOST_ESP_APP_FOLDER_PCAPS    "/ext/apps_data/ghost_esp/pcaps"
 #define GHOST_ESP_APP_FOLDER_WARDRIVE "/ext/apps_data/ghost_esp/wardrive"
