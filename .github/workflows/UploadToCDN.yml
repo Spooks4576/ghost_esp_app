@@ -1,4 +1,3 @@
-# .github/workflows/upload_to_r2.yml
 name: Upload and Notify
 on:
   workflow_dispatch:
@@ -19,8 +18,10 @@ jobs:
         
         echo "version=$(echo "$release" | jq -r '.tag_name')" >> $GITHUB_OUTPUT
         echo "asset_url=$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".fap")) | .browser_download_url')" >> $GITHUB_OUTPUT
-        description=$(echo "$release" | jq -r '.body' | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
-        echo "description=$description" >> $GITHUB_OUTPUT
+        description=$(echo "$release" | jq -r '.body')
+        echo "description<<EOF" >> $GITHUB_OUTPUT
+        echo "$description" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Download FAP
       run: |
@@ -38,12 +39,14 @@ jobs:
         R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       run: |
         mkdir -p ~/.config/rclone
-        echo "[cloudflare]" > ~/.config/rclone/rclone.conf
-        echo "type = s3" >> ~/.config/rclone/rclone.conf
-        echo "provider = Cloudflare" >> ~/.config/rclone/rclone.conf
-        echo "access_key_id = $R2_ACCESS_KEY_ID" >> ~/.config/rclone/rclone.conf
-        echo "secret_access_key = $R2_SECRET_ACCESS_KEY" >> ~/.config/rclone/rclone.conf
-        echo "endpoint = https://fb5f7d31bedfe4f3538ddfa6db491962.r2.cloudflarestorage.com" >> ~/.config/rclone/rclone.conf
+        cat > ~/.config/rclone/rclone.conf << EOF
+        [cloudflare]
+        type = s3
+        provider = Cloudflare
+        access_key_id = $R2_ACCESS_KEY_ID
+        secret_access_key = $R2_SECRET_ACCESS_KEY
+        endpoint = https://fb5f7d31bedfe4f3538ddfa6db491962.r2.cloudflarestorage.com
+        EOF
 
     - name: Upload to R2
       env:
@@ -57,61 +60,60 @@ jobs:
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       run: |
+        # Get current UTC timestamp
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
         
-        # Truncate description if too long and properly escape for JSON
+        # Get description and clean version
         DESCRIPTION="${{ steps.get_release.outputs.description }}"
+        VERSION="${{ steps.get_release.outputs.version }}"
+        VERSION="${VERSION#v}"  # Remove leading 'v' if present
+        
+        # Truncate and format description if needed
         if [ ${#DESCRIPTION} -gt 1024 ]; then
           DESCRIPTION="${DESCRIPTION:0:1021}..."
         fi
         
-        # Properly escape the description for JSON
-        DESCRIPTION=$(echo "$DESCRIPTION" | jq -R -s '.')
-        
-        # Clean version number
-        VERSION=$(echo "${{ steps.get_release.outputs.version }}" | sed 's/^v//')
-        
+        # Create JSON payload using jq
         payload=$(jq -n \
           --arg title "Ghost ESP Update" \
-          --arg desc "Version ${VERSION} is now available" \
-          --arg download_url "https://cdn.spookytools.com/assets/ghost_esp.fap" \
-          --arg changes "$DESCRIPTION" \
+          --arg version "$VERSION" \
+          --arg description "$DESCRIPTION" \
           --arg timestamp "$TIMESTAMP" \
           '{
-            "embeds": [{
-              "title": $title,
-              "description": $desc,
-              "color": 8847615,
-              "fields": [
+            embeds: [{
+              title: $title,
+              description: "Version " + $version + " is now available",
+              color: 8847615,
+              fields: [
                 {
-                  "name": "Download Latest Version",
-                  "value": "[Click here to download](" + $download_url + ")",
-                  "inline": false
+                  name: "Download Latest Version",
+                  value: "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
+                  inline: false
                 },
                 {
-                  "name": "Changes in this version",
-                  "value": $changes,
-                  "inline": false
+                  name: "Changes in this version",
+                  value: $description,
+                  inline: false
                 }
               ],
-              "footer": {
-                "text": "Ghost ESP for Flipper Zero"
+              footer: {
+                text: "Ghost ESP for Flipper Zero"
               },
-              "timestamp": $timestamp
+              timestamp: $timestamp
             }]
           }')
         
-        # Send to Discord with error handling
-        response=$(curl -s -w "\n%{http_code}" -X POST \
+        # Send to Discord with error handling and verbose output
+        response=$(curl -v -X POST \
           -H "Content-Type: application/json" \
           -d "$payload" \
-          "$DISCORD_WEBHOOK_URL")
+          "$DISCORD_WEBHOOK_URL" 2>&1)
         
-        status_code=$(echo "$response" | tail -n1)
-        response_body=$(echo "$response" | sed '$d')
+        status_code=$?
         
-        if [ "$status_code" -ne 204 ]; then
-          echo "Error sending Discord notification. Status code: $status_code"
-          echo "Response: $response_body"
+        if [ $status_code -ne 0 ]; then
+          echo "Error sending Discord notification"
+          echo "Curl Response: $response"
+          echo "Payload was: $payload"
           exit 1
         fi
