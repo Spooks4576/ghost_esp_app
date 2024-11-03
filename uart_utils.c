@@ -16,17 +16,12 @@ static FuriMutex* buffer_mutex = NULL;
 #define MUTEX_TIMEOUT_MS 1000
 #define BUFFER_CLEAR_SIZE 128
 
-// In uart_utils.c, after the defines
-static APListState g_ap_list_state = {
-    .in_ap_list = false,
-    .ap_count = 0,
-    .expected_ap_count = 0
-};
 
+
+static void strip_ansi_codes(const char* input, char* output);
 static bool process_chunk(LineProcessingState* state, const char* input, 
                          char* output, size_t output_size,
                          size_t* output_len);
-
 static bool format_line(const char* input, char* output, FilterConfig* config);
 
 static bool init_buffer_mutex() {
@@ -163,67 +158,35 @@ static bool process_chunk(LineProcessingState* state, const char* input,
     return false;
 }
 
-static bool is_ap_list_start(const char* line) {
-    if (!line) return false;
+
+
+
+static bool should_filter_line(const char* raw_line) {
+    if(!raw_line || !*raw_line) return true;  // Filter empty lines
+
+    // First strip ANSI and clean the line
+    char clean_line[RX_BUF_SIZE];
+    strip_ansi_codes(raw_line, clean_line);
     
-    if (strstr(line, "Found") && strstr(line, "access points:")) {
-        // Extract expected AP count
-        const char* count_start = strstr(line, "Found") + 6;
-        char* end;
-        int count = strtol(count_start, &end, 10);
-        if (count > 0) {
-            g_ap_list_state.expected_ap_count = count;
-        }
-        return true;
-    }
-    return false;
-}
+    // Debug messages always filtered
+    if(strstr(clean_line, "wifi:flush") ||
+       strstr(clean_line, "wifi:stop") ||
+       strstr(clean_line, "wifi:lmac") ||
+       strstr(clean_line, "wifi:new:") ||
+       strstr(clean_line, "wifi:station:") ||
+       strstr(clean_line, "wifi:<ba-")) return true;
 
-static bool is_ap_list_entry(const char* line) {
-    if (!line) return false;
-    return strstr(line, "SSID:") != NULL && 
-           strstr(line, "BSSID:") != NULL && 
-           strstr(line, "RSSI:") != NULL && 
-           strstr(line, "Company:") != NULL;
-}
-
-static bool match_any_pattern(const char* line, const char* patterns[]) {
-    for(int i = 0; patterns[i]; i++) {
-        if(strstr(line, patterns[i])) return true;
-    }
-    return false;
-}
-
-static bool should_filter_line(const char* line) {
-    if(!line || !*line) return true;  // Filter empty lines
-    
-    // Handle AP list state
-    if(g_ap_list_state.in_ap_list) {
-        if(g_ap_list_state.ap_count >= g_ap_list_state.expected_ap_count) {
-            g_ap_list_state.in_ap_list = false;
-            g_ap_list_state.ap_count = 0;
-        }
-    }
-
-    // AP List handling
-    if(is_ap_list_start(line)) {
-        g_ap_list_state.in_ap_list = true;
-        g_ap_list_state.ap_count = 0;
+    // AP List handling - Keep all AP list related messages
+    if(strstr(clean_line, "WiFiManager:") ||
+       strstr(clean_line, "SSID:") ||
+       strstr(clean_line, "BSSID:") ||
+       (strstr(clean_line, "Found") && strstr(clean_line, "access points:"))) {
         return false;
     }
-    
-    if(g_ap_list_state.in_ap_list) {
-        if(is_ap_list_entry(line)) {
-            g_ap_list_state.ap_count++;
-            return false;
-        }
-        if(!strstr(line, "WiFiManager:")) {
-            g_ap_list_state.in_ap_list = false;
-        }
-    }
 
+    // Keep important messages
     static const char* keep_patterns[] = {
-        "WiFiManager:", "BLE_MANAGER:", "ESP32",
+        "BLE_MANAGER:", "ESP32",
         "WiFi scan", "scan started", "scan stopped",
         "monitor mode", "AP count", "Added station",
         "HTTP server", "DHCP server", "IP Address:",
@@ -232,6 +195,7 @@ static bool should_filter_line(const char* line) {
         NULL
     };
 
+    // Debug patterns to filter
     static const char* filter_patterns[] = {
         "No deauth transmission", "wifi:flush txq",
         "wifi:stop sw txq", "wifi:lmac stop hw",
@@ -242,82 +206,77 @@ static bool should_filter_line(const char* line) {
         NULL
     };
 
-    // Keep patterns take precedence
-    if(match_any_pattern(line, keep_patterns)) return false;
-    if(match_any_pattern(line, filter_patterns)) return true;
+    // Check patterns
+    for(int i = 0; keep_patterns[i]; i++) {
+        if(strstr(clean_line, keep_patterns[i])) return false;
+    }
 
-    return false; // Default to keeping line if no patterns match
+    for(int i = 0; filter_patterns[i]; i++) {
+        if(strstr(clean_line, filter_patterns[i])) return true;
+    }
+    
+    return false; // Default to keeping line
 }
-
 static void clean_text(char* str) {
     if(!str) return;
-
+    
     const char* read = str;
     char* write = str;
     bool in_escape = false;
-    bool last_was_space = true;
-
+    bool last_space = true;
+    
     while(*read) {
-        unsigned char c = *read++;
-
-        // Handle ANSI sequences
-        if(c == '\x1b' || (in_escape && (c == '['))) {
+        unsigned char c = (unsigned char)*read;
+        
+        if(c == '\x1b') {
             in_escape = true;
+            read++;
             continue;
         }
         if(in_escape) {
-            if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
+            if((c >= 'A' && c <= 'Z') || 
+               (c >= 'a' && c <= 'z') || 
+               c == 'm') {
                 in_escape = false;
             }
+            read++;
             continue;
         }
-
-        // Handle normal characters
-        if(isspace(c)) {
-            if(!last_was_space) {
+        
+        if(isspace((unsigned char)c)) {
+            if(!last_space) {
                 *write++ = ' ';
-                last_was_space = true;
+                last_space = true;
             }
         } else {
             *write++ = c;
-            last_was_space = false;
+            last_space = false;
         }
+        read++;
     }
-
-    // Trim trailing space
-    if(write > str && write[-1] == ' ') write--;
+    
+    if(write > str && *(write-1) == ' ') write--;
     *write = '\0';
 }
-
 static void strip_ansi_codes(const char* input, char* output) {
     if (!input || !output) return;
-   
+    
     size_t j = 0;
-    size_t input_len = strlen(input);
     bool in_escape = false;
     bool in_timestamp = false;
-    char* temp = malloc(RX_BUF_SIZE);
-    if (!temp) {
-        FURI_LOG_E("UART", "Failed to allocate temp buffer");
-        return;
-    }
-    memset(temp, 0, RX_BUF_SIZE);
-    
-    size_t temp_idx = 0;
     char last_char = 0;
-    char next_char = 0;
-   
-    for (size_t i = 0; i < input_len; i++) {
-        unsigned char c = (unsigned char)input[i];
-        next_char = (i + 1 < input_len) ? input[i + 1] : 0;
-       
-        // Improved escape sequence handling
+    
+    for (size_t i = 0; input[i]; i++) {
+        unsigned char c = input[i];
+        char next_char = input[i + 1];
+        
+        // Handle ANSI escape sequences
         if (c == '\x1b' || (c == '[' && last_char == '\x1b')) {
             in_escape = true;
             last_char = c;
             continue;
         }
-       
+        
         if (in_escape) {
             if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == 'm') {
                 in_escape = false;
@@ -325,8 +284,8 @@ static void strip_ansi_codes(const char* input, char* output) {
             last_char = c;
             continue;
         }
-       
-        // Enhanced timestamp handling with boundary protection
+        
+        // Handle timestamps
         if (c == '(' && next_char && isdigit((unsigned char)next_char)) {
             in_timestamp = true;
             continue;
@@ -335,68 +294,26 @@ static void strip_ansi_codes(const char* input, char* output) {
             if (c == ')') {
                 in_timestamp = false;
                 if (next_char && !isspace((unsigned char)next_char)) {
-                    if (temp_idx < RX_BUF_SIZE - 1) {
-                        temp[temp_idx++] = ' ';
-                    }
+                    output[j++] = ' ';
                 }
             }
             continue;
         }
-       
-        // Improved color code fragment handling with boundary check
-        if (c == ';' && i + 2 < input_len &&
-            isdigit((unsigned char)next_char) && input[i + 2] == 'm') {
+        
+        // Skip color code fragments
+        if (c == ';' && next_char && isdigit((unsigned char)next_char) && 
+            input[i + 2] && input[i + 2] == 'm') {
             i += 2;
             continue;
         }
-       
-        // Enhanced buffer management with word boundary protection
-        if (temp_idx >= RX_BUF_SIZE - 2) {
-            char* last_space = strrchr(temp, ' ');
-            if (last_space) {
-                size_t keep_len = last_space - temp;
-                if (j + keep_len < RX_BUF_SIZE) {
-                    memcpy(output + j, temp, keep_len);
-                    j += keep_len;
-                   
-                    // Move remaining content with overlap protection
-                    size_t remaining = temp_idx - (keep_len + 1);
-                    if (remaining > 0) {
-                        memmove(temp, last_space + 1, remaining);
-                        temp_idx = remaining;
-                    } else {
-                        temp_idx = 0;
-                    }
-                }
-            } else {
-                if (j + temp_idx < RX_BUF_SIZE) {
-                    memcpy(output + j, temp, temp_idx);
-                    j += temp_idx;
-                    temp_idx = 0;
-                }
-            }
-        }
-       
-        // Add character with boundary check
-        if (temp_idx < RX_BUF_SIZE - 1) {
-            temp[temp_idx++] = c;
+        
+        if (j < RX_BUF_SIZE - 1) {
+            output[j++] = c;
         }
         last_char = c;
     }
-   
-    // Handle remaining characters with improved cleanup
-    if (temp_idx > 0) {
-        temp[temp_idx] = '\0';
-        clean_text(temp);
-        size_t remaining_len = strlen(temp);
-        if (j + remaining_len < RX_BUF_SIZE) {
-            memcpy(output + j, temp, remaining_len);
-            j += remaining_len;
-        }
-    }
-   
+    
     output[j] = '\0';
-    free(temp);
     clean_text(output);
 }
 
@@ -412,70 +329,32 @@ static bool format_line(const char* input, char* output, FilterConfig* config) {
     char* temp = malloc(RX_BUF_SIZE);
     if (!temp) return false;
     
-    // Initial cleanup with improved buffer management
-    strncpy(temp, input, RX_BUF_SIZE - 1);
-    temp[RX_BUF_SIZE - 1] = '\0';
-
-    // Enhanced ANSI code handling
-    if (config->strip_ansi_codes) {
-        char* stripped = malloc(RX_BUF_SIZE);
-        if (stripped) {
-            strip_ansi_codes(temp, stripped);
-            strncpy(temp, stripped, RX_BUF_SIZE - 1);
-            free(stripped);
-        }
-    }
-
+    // Do all processing on cleaned line
+    strip_ansi_codes(input, temp);
     clean_text(temp);
 
-    // Improved pattern fixing
-    char* fixed = temp;
-    while (*fixed) {
-        if (strncmp(fixed, "Wi Fi", 5) == 0) {
-            memmove(fixed + 4, fixed + 5, strlen(fixed + 5) + 1);
-            memcpy(fixed, "WiFi", 4);
-        }
-        // Add additional pattern fixes here if needed
-        fixed++;
-    }
-
-    // Enhanced timestamp and ID cleanup
-    char* start = temp;
-    while (*start) {
-        if (isdigit((unsigned char)*start) && strstr(start, "]")) {
-            char* end = strstr(start, "]");
-            if (end) {
-                memmove(start, end + 1, strlen(end + 1) + 1);
-                while (*start == ' ') start++; // Remove leading spaces
-                continue;
-            }
-        }
-        break;
-    }
-
-    bool keep_line = !should_filter_line(start);
+    bool keep_line = !should_filter_line(temp);
     
     if (keep_line) {
+        // Add prefix if needed
         const char* prefix = "";
         if (config->add_prefixes) {
-            if (strstr(start, "WiFi") || strstr(start, "AP_MANAGER") || 
-                strstr(start, "SSID:") || strstr(start, "BSSID:")) {
+            if (strstr(temp, "WiFi") || strstr(temp, "AP_MANAGER") || 
+                strstr(temp, "SSID:") || strstr(temp, "BSSID:")) {
                 prefix = "[WIFI] ";
-            } else if (strstr(start, "BLE")) {
+            } else if (strstr(temp, "BLE")) {
                 prefix = "[BLE] ";
-            } else if (strstr(start, "Found Flipper")) {
+            } else if (strstr(temp, "Found Flipper")) {
                 prefix = "[FLIPPER] ";
             }
         }
 
-        // More robust prefix handling
-        if (strlen(prefix) > 0 && strncmp(start, prefix, strlen(prefix)) != 0) {
-            snprintf(output, RX_BUF_SIZE - 1, "%s%s", prefix, start);
+        if (strlen(prefix) > 0) {
+            snprintf(output, RX_BUF_SIZE - 1, "%s%s", prefix, temp);
         } else {
-            strncpy(output, start, RX_BUF_SIZE - 1);
+            strncpy(output, temp, RX_BUF_SIZE - 1);
         }
         output[RX_BUF_SIZE - 1] = '\0';
-        clean_text(output);
     }
     
     free(temp);
@@ -536,7 +415,32 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
         return;
     }
 
-    // Ensure proper null termination of input
+    // Handle logging to file first, before any buffer modifications
+    if(state->uart_context->storageContext && 
+       state->uart_context->storageContext->log_file) {
+        // Ensure proper null termination for logging
+        uint8_t* log_buf = malloc(len + 1);
+        if(log_buf) {
+            memcpy(log_buf, buf, len);
+            log_buf[len] = '\0';
+            
+            uint16_t written = storage_file_write(
+                state->uart_context->storageContext->log_file, 
+                log_buf, 
+                len
+            );
+            
+            if(written != len) {
+                FURI_LOG_E("UART", "Log write failed: %d/%d bytes", written, len);
+                // Force a file sync to ensure data is written
+                storage_file_sync(state->uart_context->storageContext->log_file);
+            }
+            
+            free(log_buf);
+        }
+    }
+
+    // Ensure proper null termination of input for display
     if(len >= RX_BUF_SIZE) len = RX_BUF_SIZE - 1;
     buf[len] = '\0';
 
@@ -618,7 +522,6 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
             text_box_set_text(state->text_box, state->textBoxBuffer);
             text_box_set_focus(state->text_box, TextBoxFocusStart);
         } else {
-            // Handle sign issues with explicit cast for arithmetic
             size_t display_size = state->buffer_length;
             if(display_size > (size_t)TEXT_BOX_STORE_SIZE - 1) {
                 display_size = (size_t)TEXT_BOX_STORE_SIZE - 1;
@@ -628,12 +531,6 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
             text_box_set_text(state->text_box, display_start);
             text_box_set_focus(state->text_box, TextBoxFocusEnd);
         }
-    }
-
-    // Handle logging to file
-    if(state->uart_context->storageContext && 
-       state->uart_context->storageContext->log_file) {
-        storage_file_write(state->uart_context->storageContext->log_file, buf, len);
     }
 
     furi_mutex_release(buffer_mutex);

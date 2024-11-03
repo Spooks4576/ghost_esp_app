@@ -51,4 +51,5 @@ struct AppState {
     char* textBoxBuffer;
     size_t buffer_length;
     size_t buffer_capacity; 
+    size_t buffer_size; 
 };
