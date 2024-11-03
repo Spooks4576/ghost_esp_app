@@ -1,3 +1,4 @@
+# .github/workflows/upload_to_r2.yml
 name: Upload and Notify
 on:
   workflow_dispatch:
@@ -94,7 +95,7 @@ jobs:
             "timestamp": "TIMESTAMP_PLACEHOLDER"
           }]
         }
-EOF
+        EOF
         
         # Use jq to safely inject our variables
         jq --arg ver "$VERSION" \
