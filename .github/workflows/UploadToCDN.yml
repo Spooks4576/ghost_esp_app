@@ -60,60 +60,43 @@ jobs:
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       run: |
-        # Get current UTC timestamp
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-        
-        # Get description and clean version
-        DESCRIPTION="${{ steps.get_release.outputs.description }}"
         VERSION="${{ steps.get_release.outputs.version }}"
-        VERSION="${VERSION#v}"  # Remove leading 'v' if present
+        VERSION="${VERSION#v}"
+        DESCRIPTION="${{ steps.get_release.outputs.description }}"
         
-        # Truncate and format description if needed
         if [ ${#DESCRIPTION} -gt 1024 ]; then
           DESCRIPTION="${DESCRIPTION:0:1021}..."
         fi
         
-        # Create JSON payload using jq
-        payload=$(jq -n \
-          --arg title "Ghost ESP Update" \
-          --arg version "$VERSION" \
-          --arg description "$DESCRIPTION" \
-          --arg timestamp "$TIMESTAMP" \
-          '{
-            embeds: [{
-              title: $title,
-              description: "Version " + $version + " is now available",
-              color: 8847615,
-              fields: [
+        # Escape the description for JSON
+        DESCRIPTION=$(echo "$DESCRIPTION" | jq -R -s '.')
+        
+        # Create and send the payload
+        curl -s -H "Content-Type: application/json" "$DISCORD_WEBHOOK_URL" \
+          -d '{
+            "embeds": [{
+              "title": "Ghost ESP Flipper App Update!",
+              "description": "Version '"$VERSION"' is now available",
+              "color": 8847615,
+              "fields": [
                 {
-                  name: "Download Latest Version",
-                  value: "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
-                  inline: false
+                  "name": "Download Latest Version",
+                  "value": "[Click here to download](https://cdn.spookytools.com/assets/ghost_esp.fap)",
+                  "inline": false
                 },
                 {
-                  name: "Changes in this version",
-                  value: $description,
-                  inline: false
+                  "name": "Changes in this version",
+                  "value": '"$DESCRIPTION"',
+                  "inline": false
                 }
               ],
-              footer: {
-                text: "Ghost ESP for Flipper Zero"
+              "footer": {
+                "text": "Ghost ESP for Flipper Zero"
               },
-              timestamp: $timestamp
+              "timestamp": "'"$TIMESTAMP"'"
             }]
-          }')
-        
-        # Send to Discord with error handling and verbose output
-        response=$(curl -v -X POST \
-          -H "Content-Type: application/json" \
-          -d "$payload" \
-          "$DISCORD_WEBHOOK_URL" 2>&1)
-        
-        status_code=$?
-        
-        if [ $status_code -ne 0 ]; then
-          echo "Error sending Discord notification"
-          echo "Curl Response: $response"
-          echo "Payload was: $payload"
-          exit 1
-        fi
+          }' || {
+            echo "Failed to send Discord notification"
+            exit 1
+          }
