@@ -221,16 +221,37 @@ static void uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent e
 void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
     AppState *state = (AppState *)context;
     if(!state || !state->uart_context || !state->uart_context->is_serial_active || 
-       !buf || len == 0) return;
-
-    // Log if in capture mode and storage is enabled
-    if(state->uart_context->pcap && 
-       state->uart_context->storageContext && 
-       state->uart_context->storageContext->log_file) {
-        storage_file_write(state->uart_context->storageContext->log_file, buf, len);
+       !buf || len == 0) {
+        FURI_LOG_W("UART", "Invalid parameters in handle_uart_rx_data");
+        return;
     }
 
-    // Update display
+    // Only log data if NOT in PCAP mode
+    if(!state->uart_context->pcap && 
+       state->uart_context->storageContext && 
+       state->uart_context->storageContext->log_file && 
+       state->uart_context->storageContext->HasOpenedFile) {
+        static size_t bytes_since_sync = 0;
+        
+        size_t written = storage_file_write(
+            state->uart_context->storageContext->log_file, 
+            buf, 
+            len
+        );
+        
+        if(written != len) {
+            FURI_LOG_E("UART", "Failed to write log data: expected %zu, wrote %zu", len, written);
+        } else {
+            bytes_since_sync += written;
+            if(bytes_since_sync >= 8192) {
+                storage_file_sync(state->uart_context->storageContext->log_file);
+                bytes_since_sync = 0;
+                FURI_LOG_D("UART", "Synced log file to storage");
+            }
+        }
+    }
+
+    // Update text display
     text_buffer_add(state->uart_context->text_manager, (char*)buf, len);
     text_buffer_update_view(state->uart_context->text_manager,
                            state->settings.view_logs_from_start_index);
