@@ -40,7 +40,7 @@ static void confirmation_view_draw_callback(Canvas* canvas, void* _model) {
     
     if(model->text) {
         // Create a temporary buffer for visible text
-        const size_t max_visible_chars = 128;  // Reduced size
+        const size_t max_visible_chars = 128;
         char visible_text[max_visible_chars];
         uint8_t current_line = 0;
         uint8_t visible_lines = 0;

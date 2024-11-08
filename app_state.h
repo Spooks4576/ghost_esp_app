@@ -46,6 +46,9 @@ struct AppState {
     uint32_t current_index; 
     uint8_t current_view;
     uint8_t previous_view;
+    uint32_t last_wifi_index; 
+    uint32_t last_ble_index;
+    uint32_t last_gps_index;
     char* input_buffer;
     const char* uart_command;
     char* textBoxBuffer;
