@@ -552,31 +552,13 @@ static const MenuCommand ble_commands[] = {
     },
 };
 
-// GPS menu command definitions
+// GPS menu command definitions 
 static const MenuCommand gps_commands[] = {
     {
-        .label = "Street Detector",
-        .command = "streetdetector",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Street Detector",
-        .details_text = "Scans for GPS coords\n"
-                       "and displays nearby:\n"
-                       "- Street names\n"
-                       "- Intersections\n"
-                       "- Points of interest\n",
-    },
-    {
-        .label = "WarDrive",
-        .command = "wardrive",
+        .label = "WarDrive Mode", 
+        .command = "startwd\n",
         .capture_prefix = "wardrive_scan",
-        .file_ext = "csv",
+        .file_ext = "csv", 
         .folder = GHOST_ESP_APP_FOLDER_WARDRIVE,
         .needs_input = false,
         .input_text = NULL,
@@ -591,8 +573,23 @@ static const MenuCommand gps_commands[] = {
                        "- GPS coordinates\n"
                        "- Signal strength\n",
     },
+    {
+        .label = "Stop WarDrive",
+        .command = "startwd -s\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop WarDrive",
+        .details_text = "Stops wardriving\n"
+                       "mode and saves any\n"
+                       "remaining data.\n",
+    }
 };
-
 
 void send_uart_command(const char* command, void* state) {
     AppState* app_state = (AppState*)state;
@@ -617,17 +614,33 @@ void send_uart_command_with_bytes(
 static void confirmation_ok_callback(void* context) {
     MenuCommandContext* cmd_ctx = context;
     if(cmd_ctx && cmd_ctx->state && cmd_ctx->command) {
+        bool file_opened = false;
+
+        // **Step 1: Open the PCAP File First**
+        if(cmd_ctx->command->capture_prefix || cmd_ctx->command->file_ext || cmd_ctx->command->folder) {
+            FURI_LOG_I("Capture", "Attempting to open PCAP file before sending capture command.");
+            file_opened = uart_receive_data(
+                cmd_ctx->state->uart_context,
+                cmd_ctx->state->view_dispatcher,
+                cmd_ctx->state,
+                cmd_ctx->command->capture_prefix ? cmd_ctx->command->capture_prefix : "",
+                cmd_ctx->command->file_ext ? cmd_ctx->command->file_ext : "",
+                cmd_ctx->command->folder ? cmd_ctx->command->folder : "");
+
+            if(!file_opened) {
+                FURI_LOG_E("Capture", "Failed to open PCAP file. Aborting capture command.");
+                free(cmd_ctx);
+                return;
+            }
+        }
+
+        // **Step 2: Send the Capture Command After File is Opened**
         send_uart_command(cmd_ctx->command->command, cmd_ctx->state);
-        uart_receive_data(
-            cmd_ctx->state->uart_context,
-            cmd_ctx->state->view_dispatcher,
-            cmd_ctx->state,
-            cmd_ctx->command->capture_prefix ? cmd_ctx->command->capture_prefix : "",
-            cmd_ctx->command->file_ext ? cmd_ctx->command->file_ext : "",
-            cmd_ctx->command->folder ? cmd_ctx->command->folder : "");
+        FURI_LOG_I("Capture", "Capture command sent to firmware.");
     }
     free(cmd_ctx);
 }
+
 
 static void confirmation_cancel_callback(void* context) {
     MenuCommandContext* cmd_ctx = context;
@@ -685,38 +698,39 @@ static void error_callback(void* context) {
     state->current_view = state->previous_view;
 }
 
+
 static void execute_menu_command(AppState* state, const MenuCommand* command) {
     // Check ESP connection first
     if(!uart_is_esp_connected(state->uart_context)) {
         // Save current view
         state->previous_view = state->current_view;
-        
-        // Use confirmation view to show error
+       
+        // Show error and return
         confirmation_view_set_header(state->confirmation_view, "Connection Error");
         confirmation_view_set_text(state->confirmation_view, "ESP Not Connected!\nTry Rebooting ESP.\nReflash if issues persist.");
         confirmation_view_set_ok_callback(state->confirmation_view, error_callback, state);
         confirmation_view_set_cancel_callback(state->confirmation_view, error_callback, state);
-        
+       
         view_dispatcher_switch_to_view(state->view_dispatcher, 7);
         state->current_view = 7;
-        return;
+        return;  // Important: Return here to prevent further execution
     }
 
-    // Rest of the function remains unchanged
+    // For commands needing confirmation
     if(command->needs_confirmation) {
         MenuCommandContext* cmd_ctx = malloc(sizeof(MenuCommandContext));
         cmd_ctx->state = state;
         cmd_ctx->command = command;
-
         confirmation_view_set_header(state->confirmation_view, command->confirm_header);
         confirmation_view_set_text(state->confirmation_view, command->confirm_text);
         confirmation_view_set_ok_callback(state->confirmation_view, confirmation_ok_callback, cmd_ctx);
         confirmation_view_set_cancel_callback(state->confirmation_view, confirmation_cancel_callback, cmd_ctx);
-        
+       
         view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-        return;
+        return;  // Important: Return here
     }
 
+    // For commands needing input
     if(command->needs_input) {
         state->uart_command = command->command;
         text_input_reset(state->text_input);
@@ -729,20 +743,44 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
             32,
             true);
         view_dispatcher_switch_to_view(state->view_dispatcher, 6);
-        return;
+        return;  // Important: Return here
     }
 
+    // Handle capture commands
+    if(command->capture_prefix || command->file_ext || command->folder) {
+        // First open the capture file and switch view
+        bool file_opened = uart_receive_data(
+            state->uart_context,
+            state->view_dispatcher,
+            state,
+            command->capture_prefix ? command->capture_prefix : "",
+            command->file_ext ? command->file_ext : "",
+            command->folder ? command->folder : "");
+
+        if(!file_opened) {
+            FURI_LOG_E("Capture", "Failed to open capture file");
+            return;
+        }
+
+        // Then send command to start capture only after file is ready
+        furi_delay_ms(10); // Small delay to ensure file is ready
+        send_uart_command(command->command, state);
+        return;  // Important: Return here
+    }
+
+    // For regular commands:
+    // 1. First send the command
     send_uart_command(command->command, state);
+    
+    // 2. Then switch to text view
     uart_receive_data(
         state->uart_context,
         state->view_dispatcher,
         state,
-        command->capture_prefix ? command->capture_prefix : "",
-        command->file_ext ? command->file_ext : "",
-        command->folder ? command->folder : "");
+        "",  // No capture prefix
+        "",  // No file extension  
+        ""); // No folder
 }
-
-
 // Menu display functions
 void show_wifi_menu(AppState* state) {
     show_menu(state, wifi_commands, COUNT_OF(wifi_commands), 
@@ -762,21 +800,25 @@ void show_gps_menu(AppState* state) {
 // Menu command handlers
 void handle_wifi_menu(AppState* state, uint32_t index) {
     if(index < COUNT_OF(wifi_commands)) {
+        state->last_wifi_index = index;  // Save the selection
         execute_menu_command(state, &wifi_commands[index]);
     }
 }
 
 void handle_ble_menu(AppState* state, uint32_t index) {
     if(index < COUNT_OF(ble_commands)) {
+        state->last_ble_index = index;  // Save the selection
         execute_menu_command(state, &ble_commands[index]);
     }
 }
 
 void handle_gps_menu(AppState* state, uint32_t index) {
     if(index < COUNT_OF(gps_commands)) {
+        state->last_gps_index = index;  // Save the selection
         execute_menu_command(state, &gps_commands[index]);
     }
 }
+
 
 // Callback for text input results
 static void text_input_result_callback(void* context) {
@@ -814,8 +856,39 @@ void submenu_callback(void* context, uint32_t index) {
     }
 }
 
+
+
+static void show_menu_help(void* context, uint32_t index) {
+    UNUSED(index);
+    AppState* state = context;
+
+    // Save current view
+    state->previous_view = state->current_view;
+
+    // Define help text with essential actions only
+    const char* help_text = 
+        "Hold [Ok]\n    Show details for commands\n\n"
+        "[OPTIONAL]\nBack in output view\nstops all operations.\n\n\n";
+
+    // Set header and help text in the confirmation view
+    confirmation_view_set_header(state->confirmation_view, "Quick Help");
+    confirmation_view_set_text(state->confirmation_view, help_text);
+
+    // Set callbacks for user actions
+    confirmation_view_set_ok_callback(state->confirmation_view, app_info_ok_callback, state);
+    confirmation_view_set_cancel_callback(state->confirmation_view, app_info_ok_callback, state);
+
+    // Switch to confirmation view to display help
+    view_dispatcher_switch_to_view(state->view_dispatcher, 7);
+    state->current_view = 7;
+}
+
+
+
 bool back_event_callback(void* context) {
     AppState* state = (AppState*)context;
+    if(!state) return false;
+
     uint32_t current_view = state->current_view;
 
     // Allow confirmation view to handle its own back button
@@ -823,8 +896,9 @@ bool back_event_callback(void* context) {
         return false;
     }
 
-    if(current_view == 5) {  // Text box view
-        FURI_LOG_D("Ghost ESP", "Stopping Operations");
+    // Handle text box view (view 5)
+    if(current_view == 5) {
+        FURI_LOG_D("Ghost ESP", "Handling text box view exit");
 
         // Cleanup text buffer
         if(state->textBoxBuffer) {
@@ -838,71 +912,119 @@ bool back_event_callback(void* context) {
 
         // Send stop commands if enabled in settings
         if(state->settings.stop_on_back_index) {
+            FURI_LOG_D("Ghost ESP", "Stopping active operations");
+            
             // First stop any packet captures to ensure proper file saving
             send_uart_command("capture -stop\n", state);
-            furi_delay_ms(100); // Give time for file operation
-
-            // Reset PCAP state if needed
+            
+            // Give more time for PCAP stop command to process
+            furi_delay_ms(200);
+            
+            // Wait for any pending PCAP data
             if(state->uart_context->pcap) {
+                // Wait for pcap buffer to empty
+                for(uint8_t i = 0; i < 10; i++) {  // Try up to 10 times
+                    if(state->uart_context->pcap_buf_len > 0) {
+                        furi_delay_ms(50);
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Now safe to reset PCAP state
                 state->uart_context->pcap = false;
                 furi_stream_buffer_reset(state->uart_context->pcap_stream);
-                furi_delay_ms(50); // Allow buffer cleanup
             }
 
-            // Then stop various operations in a logical order
-            send_uart_command("stopscan\n", state);
-            furi_delay_ms(50);
-            
-            send_uart_command("stopspam\n", state);
-            furi_delay_ms(50);
-            
-            send_uart_command("stopdeauth\n", state);
-            furi_delay_ms(50);
-            
-            send_uart_command("stopportal\n", state);
-            furi_delay_ms(50);
-            
-            send_uart_command("blescan -s\n", state);
-            furi_delay_ms(50);
-            
-            // Final general stop
-            send_uart_command("stop\n", state);
-            furi_delay_ms(50);
-        }
+            // Stop operations in a logical order
+            const char* stop_commands[] = {
+                "stopscan\n",
+                "stopspam\n",
+                "stopdeauth\n",
+                "stopportal\n",
+                "blescan -s\n",
+                "stop\n"
+            };
 
-        // Close any open files with proper checking
-        if(state->uart_context->storageContext) {
-            if(state->uart_context->storageContext->current_file &&
-               storage_file_is_open(state->uart_context->storageContext->current_file)) {
-                // Give time for final writes
-                furi_delay_ms(100);
-                storage_file_close(state->uart_context->storageContext->current_file);
-                state->uart_context->storageContext->HasOpenedFile = false;
-                FURI_LOG_D("DEBUG", "Storage File Closed");
+            for(size_t i = 0; i < COUNT_OF(stop_commands); i++) {
+                send_uart_command(stop_commands[i], state);
+                furi_delay_ms(50);
             }
         }
 
-        // Return to appropriate previous view
+        // Clean up files using the safe cleanup
+        if(state->uart_context && state->uart_context->storageContext) {
+            uart_storage_safe_cleanup(state->uart_context->storageContext);
+            FURI_LOG_D("Ghost ESP", "Performed safe storage cleanup");
+        }
+
+        // Return to previous menu with selection restored
         switch(state->previous_view) {
-            case 1: show_wifi_menu(state); break;
-            case 2: show_ble_menu(state); break;
-            case 3: show_gps_menu(state); break;
-            default: show_main_menu(state); break;
+            case 1:
+                show_wifi_menu(state);
+                submenu_set_selected_item(state->wifi_menu, state->last_wifi_index);
+                break;
+            case 2:
+                show_ble_menu(state);
+                submenu_set_selected_item(state->ble_menu, state->last_ble_index);
+                break;
+            case 3:
+                show_gps_menu(state);
+                submenu_set_selected_item(state->gps_menu, state->last_gps_index);
+                break;
+            case 8:
+                view_dispatcher_switch_to_view(state->view_dispatcher, 8);
+                break;
+            default:
+                show_main_menu(state);
+                break;
         }
         state->current_view = state->previous_view;
-    } else if(current_view == 8) { // Settings menu
+    } 
+    // Handle settings menu (view 8)
+    else if(current_view == 8) {
         show_main_menu(state);
         state->current_view = 0;
-    } else if(current_view != 0) {
+    }
+    // Handle settings submenu (view 4)
+    else if(current_view == 4) {
+        view_dispatcher_switch_to_view(state->view_dispatcher, 8);
+        state->current_view = 8;
+    }
+    // Handle submenu views (1-3)
+    else if(current_view >= 1 && current_view <= 3) {
         show_main_menu(state);
         state->current_view = 0;
-    } else {
+    }
+    // Handle text input view (view 6)
+    else if(current_view == 6) {
+        // Return to previous menu with selection restored
+        switch(state->previous_view) {
+            case 1:
+                show_wifi_menu(state);
+                submenu_set_selected_item(state->wifi_menu, state->last_wifi_index);
+                break;
+            case 2:
+                show_ble_menu(state);
+                submenu_set_selected_item(state->ble_menu, state->last_ble_index);
+                break;
+            case 3:
+                show_gps_menu(state);
+                submenu_set_selected_item(state->gps_menu, state->last_gps_index);
+                break;
+            default:
+                show_main_menu(state);
+                break;
+        }
+        state->current_view = state->previous_view;
+    }
+    // Handle main menu (view 0)
+    else if(current_view == 0) {
         view_dispatcher_stop(state->view_dispatcher);
     }
 
     return true;
 }
-
 
 static void show_menu(AppState* state, const MenuCommand* commands, size_t command_count, 
                      const char* header, Submenu* menu, uint8_t view_id) {
@@ -910,8 +1032,7 @@ static void show_menu(AppState* state, const MenuCommand* commands, size_t comma
     submenu_set_header(menu, header);
     
     for(size_t i = 0; i < command_count; i++) {
-        // Add items without callback
-        submenu_add_item(menu, commands[i].label, i, NULL, NULL);
+        submenu_add_item(menu, commands[i].label, i, submenu_callback, state);
     }
     
     // Set up view with input handler
@@ -919,21 +1040,37 @@ static void show_menu(AppState* state, const MenuCommand* commands, size_t comma
     view_set_context(menu_view, state);
     view_set_input_callback(menu_view, menu_input_handler);
     
+    // Restore last selection based on menu type
+    uint32_t last_index = 0;
+    switch(view_id) {
+        case 1: last_index = state->last_wifi_index; break;
+        case 2: last_index = state->last_ble_index; break;
+        case 3: last_index = state->last_gps_index; break;
+    }
+    if(last_index < command_count) {
+        submenu_set_selected_item(menu, last_index);
+    }
+    
     view_dispatcher_switch_to_view(state->view_dispatcher, view_id);
     state->current_view = view_id;
     state->previous_view = view_id;
 }
+
 void show_main_menu(AppState* state) {
     main_menu_reset(state->main_menu);
-    main_menu_set_header(state->main_menu, "Select a Utility:");
+    main_menu_set_header(state->main_menu, "");  // Empty header since we're drawing our own
     main_menu_add_item(state->main_menu, "WiFi", 0, submenu_callback, state);
     main_menu_add_item(state->main_menu, "BLE", 1, submenu_callback, state);
-    // GPS temporarily hidden
-    // main_menu_add_item(state->main_menu, "GPS", 2, submenu_callback, state);
+    main_menu_add_item(state->main_menu, "GPS", 2, submenu_callback, state);  // GPS restored
     main_menu_add_item(state->main_menu, " SET", 3, submenu_callback, state);
+    
+    // Set up help callback
+    main_menu_set_help_callback(state->main_menu, show_menu_help, state);
+    
     view_dispatcher_switch_to_view(state->view_dispatcher, 0);
     state->current_view = 0;
 }
+
 static bool menu_input_handler(InputEvent* event, void* context) {
     AppState* state = (AppState*)context;
     bool consumed = false;
@@ -989,7 +1126,6 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyOk:
                     if(current_index < commands_count) {
                         state->current_index = current_index;
-                        // Execute command
                         execute_menu_command(state, &commands[current_index]);
                         consumed = true;
                     }
@@ -1004,20 +1140,29 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyRight:
                 case InputKeyLeft:
                 case InputKeyMAX:
-                default:
                     break;
             }
             break;
 
         case InputTypeLong:
-            if(event->key == InputKeyOk) {
-                if(current_index < commands_count) {
-                    const MenuCommand* command = &commands[current_index];
-                    if(command->details_header && command->details_text) {
-                        show_command_details(state, command);
-                        consumed = true;
+            switch(event->key) {
+                case InputKeyUp:
+                case InputKeyDown:
+                case InputKeyRight:
+                case InputKeyLeft:
+                case InputKeyBack:
+                case InputKeyMAX:
+                    break;
+                    
+                case InputKeyOk:
+                    if(current_index < commands_count) {
+                        const MenuCommand* command = &commands[current_index];
+                        if(command->details_header && command->details_text) {
+                            show_command_details(state, command);
+                            consumed = true;
+                        }
                     }
-                }
+                    break;
             }
             break;
 
@@ -1042,14 +1187,13 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyOk:
                 case InputKeyBack:
                 case InputKeyMAX:
-                default:
                     break;
             }
             break;
 
         case InputTypePress:
         case InputTypeRelease:
-        default:
+        case InputTypeMAX:
             break;
     }
 

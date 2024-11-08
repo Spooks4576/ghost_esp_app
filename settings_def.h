@@ -10,7 +10,7 @@ typedef enum {
     SETTING_ENABLE_CHANNEL_HOPPING,
     SETTING_ENABLE_RANDOM_BLE_MAC,
     SETTING_STOP_ON_BACK,
-    SETTING_ENABLE_FILTERING,
+    SETTING_ENABLE_FILTERING,  // Keep for settings file compatibility
     SETTING_VIEW_LOGS_FROM_START,
     SETTING_SHOW_INFO,
     SETTING_REBOOT_ESP,
@@ -18,6 +18,7 @@ typedef enum {
     SETTING_CLEAR_NVS,
     SETTINGS_COUNT
 } SettingKey;
+
 
 // Settings operations result
 typedef enum {
@@ -87,6 +88,7 @@ extern const char* const SETTING_VALUE_NAMES_ACTION[];
 
 // Function declarations
 const SettingMetadata* settings_get_metadata(SettingKey key);
+bool setting_is_visible(SettingKey key);
 
 // Common definitions
 #define GHOST_ESP_APP_FOLDER          "/ext/apps_data/ghost_esp"
@@ -97,6 +99,7 @@ const SettingMetadata* settings_get_metadata(SettingKey key);
 
 #define SETTINGS_HEADER_MAGIC 0xDEADBEEF
 #define SETTINGS_FILE_VERSION 1
+
 
 // SettingsHeader structure
 typedef struct {

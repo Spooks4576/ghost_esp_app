@@ -64,6 +64,14 @@ int32_t ghost_esp_app(void* p) {
    if (!state) return -1;
    memset(state, 0, sizeof(AppState));  // Zero all memory first
 
+   // Initialize menu selection indices
+   state->last_wifi_index = 0;
+   state->last_ble_index = 0;
+   state->last_gps_index = 0;
+   state->current_index = 0;
+   state->current_view = 0;
+   state->previous_view = 0;
+
    // Initialize essential text buffers with minimal size
    state->textBoxBuffer = malloc(1);
    if (state->textBoxBuffer) {

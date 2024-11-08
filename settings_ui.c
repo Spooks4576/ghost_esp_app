@@ -318,6 +318,11 @@ void settings_setup_gui(VariableItemList* list, SettingsUIContext* context) {
 
     // Iterate over all settings
     for(SettingKey key = 0; key < SETTINGS_COUNT; key++) {
+        // Skip hidden settings
+        if(!setting_is_visible(key)) {
+            continue;
+        }
+
         const SettingMetadata* metadata = settings_get_metadata(key);
         if(!metadata) continue;
 
@@ -391,7 +396,7 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
                 "Updated by: Jay Candel\n"
                 "Built with <3";
 
-            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.0.9");
+            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.0");
             confirmation_view_set_text(app_state->confirmation_view, info_text);
             
             // Save current view before switching

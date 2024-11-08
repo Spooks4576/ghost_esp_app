@@ -1,31 +1,43 @@
 #include "settings_storage.h"
 #include <furi.h> // for logging
-
-
+#include "uart_storage.h"
 static Storage* storage = NULL;
+
+
 
 // Forward declarations of static functions
 static bool write_header(File* file);
 static bool verify_header(File* file);
 
 bool settings_storage_init() {
+    uint32_t start_time = furi_get_tick();
+    FURI_LOG_I("SettingsStorage", "Starting storage initialization");
+
     if(storage != NULL) {
         FURI_LOG_I("SettingsStorage", "Storage already initialized");
         return true;
     }
-    FURI_LOG_I("SettingsStorage", "Starting storage initialization");
+
     storage = furi_record_open(RECORD_STORAGE);
     if(storage == NULL) {
         FURI_LOG_E("SettingsStorage", "Failed to open RECORD_STORAGE");
         return false;
     }
+
     // Attempt to create directory without checking if it exists
     storage_simply_mkdir(storage, GHOST_ESP_APP_FOLDER);
-    // Proceed without checking for settings file existence
-    FURI_LOG_I("SettingsStorage", "Storage initialization complete");
+
+    uint32_t duration = furi_get_tick() - start_time;
+    FURI_LOG_I("SettingsStorage", "Storage initialization complete (Time taken: %lu ms)", duration);
+
     return true;
 }
 
+void uart_storage_sync_file(UartStorageContext* ctx) {
+    if(ctx && ctx->current_file) {
+        storage_file_sync(ctx->current_file);
+    }
+}
 
 static bool write_header(File* file) {
     SettingsHeader header = {
