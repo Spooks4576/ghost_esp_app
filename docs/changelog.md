@@ -1,9 +1,7 @@
 # Changelog
 
-## TODO
-- Added Easter Egg (Probably on App Info, shows like anim or image or simple game?)
-- Improve directory organisation!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+## v1.1.1
+- add sniff pwnagotchi command
 
 ## v1.1.0 🕸️👻
 - Ring buffer implementation for text handling
