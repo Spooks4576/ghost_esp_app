@@ -13,9 +13,12 @@ struct ConfirmationView {
 typedef struct {
     const char* header;
     const char* text;
-    uint8_t scroll_position;     // Current scroll position
-    uint8_t total_lines;         // Total number of lines in text
-    bool can_scroll;             // Whether text needs scrolling
+    uint8_t scroll_position;
+    uint8_t total_lines;
+    bool can_scroll;
+    // Simplified easter egg tracking
+    bool easter_egg_active;
+    uint8_t sequence_position;  // Track position in sequence
 } ConfirmationViewModel;
 
 static void confirmation_view_draw_callback(Canvas* canvas, void* _model) {
@@ -89,41 +92,61 @@ static void confirmation_view_draw_callback(Canvas* canvas, void* _model) {
 }
 
 static bool confirmation_view_input_callback(InputEvent* event, void* context) {
-    FURI_LOG_D("ConfView", "Input received - Type: %d, Key: %d", event->type, event->key);
-    
-    if(!event || !context) {
-        FURI_LOG_E("ConfView", "Null event or context in input callback");
-        return false;
-    }
+    if(!event || !context) return false;
 
     ConfirmationView* instance = (ConfirmationView*)context;
-    if(!instance) {
-        FURI_LOG_E("ConfView", "Null confirmation view instance");
-        return false;
-    }
-
+    ConfirmationViewModel* model = view_get_model(instance->view);
     bool consumed = false;
 
-    with_view_model(
-        instance->view,
-        ConfirmationViewModel* model,
-        {
-            if(event->type == InputTypeShort || event->type == InputTypeRepeat) {
-                if(event->key == InputKeyUp && model->scroll_position > 0) {
-                    model->scroll_position--;
-                    consumed = true;
-                } else if(event->key == InputKeyDown && 
-                         model->can_scroll && 
-                         model->scroll_position < model->total_lines - 4) {
-                    model->scroll_position++;
-                    consumed = true;
-                }
+    // Handle regular scroll behavior
+    if(event->type == InputTypeShort || event->type == InputTypeRepeat) {
+        if(event->key == InputKeyUp && model->scroll_position > 0) {
+            model->scroll_position--;
+            consumed = true;
+        } else if(event->key == InputKeyDown && 
+                    model->can_scroll && 
+                    model->scroll_position < model->total_lines - 4) {
+            model->scroll_position++;
+            consumed = true;
+        }
+    }
+
+    // Easter egg sequence check - only on press events
+    if(model->header && strcmp(model->header, "App Info") == 0 && event->type == 0) {
+        // Expected sequence: Up,Up,Down,Down,Left,Right,Left,Right
+        const uint8_t sequence[] = {0,0,1,1,3,2,3,2};
+        
+        if(event->key == sequence[model->sequence_position]) {
+            model->sequence_position++;
+            FURI_LOG_D("EasterEgg", "Correct button %d, pos %d", event->key, model->sequence_position);
+            
+            // Check if sequence is complete
+            if(model->sequence_position == 8) {
+                model->easter_egg_active = true;
+                model->text = "Easter Egg Found!\n\n"
+                            "Ghost in the Shell\n"
+                            "ESP32 Edition v1.0\n\n"
+                            "Made by: BigBrainAI\n"
+                            "Licensed: MIT\n\n"
+                            "A pentesting tool\n"
+                            "for research only.\n\n"
+                            "Up Up Down Down\n"
+                            "Left Right Left Right";
+                consumed = true;
+                FURI_LOG_I("EasterEgg", "Easter egg activated!");
             }
-        },
-        consumed);
+        } else {
+            // Wrong button, reset sequence
+            model->sequence_position = 0;
+            // If this button is the start of sequence, count it
+            if(event->key == sequence[0]) {
+                model->sequence_position = 1;
+            }
+        }
+    }
 
     if(!consumed) {
-        // Handle confirmation actions
+        // Handle regular confirmation actions
         if(event->type == InputTypeShort || event->type == InputTypeLong) {
             if(event->key == InputKeyOk) {
                 if(instance->ok_callback) {
@@ -139,9 +162,9 @@ static bool confirmation_view_input_callback(InputEvent* event, void* context) {
         }
     }
 
+    view_commit_model(instance->view, consumed);
     return consumed;
 }
-
 __attribute__((used)) ConfirmationView* confirmation_view_alloc(void) {
     ConfirmationView* instance = malloc(sizeof(ConfirmationView));
     if(!instance) return NULL;
@@ -151,11 +174,6 @@ __attribute__((used)) ConfirmationView* confirmation_view_alloc(void) {
         free(instance);
         return NULL;
     }
-
-    instance->ok_callback = NULL;
-    instance->ok_callback_context = NULL;
-    instance->cancel_callback = NULL;
-    instance->cancel_callback_context = NULL;
 
     view_set_context(instance->view, instance);
     view_set_draw_callback(instance->view, confirmation_view_draw_callback);
@@ -172,6 +190,9 @@ __attribute__((used)) ConfirmationView* confirmation_view_alloc(void) {
             model->scroll_position = 0;
             model->total_lines = 0;
             model->can_scroll = false;
+            // Initialize easter egg state
+            model->easter_egg_active = false;
+            model->sequence_position = 0;  // Only tracking position now
         },
         true);
 

@@ -388,6 +388,23 @@ static const MenuCommand wifi_commands[] = {
                        "packet captures and\n"
                        "saves the PCAP file.\n",
     },
+    {
+        .label = "Sniff Pwnagotchi",
+        .command = "capture -pwn\n",
+        .capture_prefix = "pwn_capture",
+        .file_ext = "pcap",
+        .folder = GHOST_ESP_APP_FOLDER_PCAPS,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Pwnagotchi Capture",
+        .details_text = "Captures packets from\n"
+                       "Pwnagotchi devices.\n"
+                       "Saves to PCAP file.\n"
+                       "Range: ~50-100m\n",
+    },
     
     // Portal & Network Operations  
     {
