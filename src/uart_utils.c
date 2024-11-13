@@ -501,47 +501,46 @@ bool uart_is_esp_connected(UartContext* uart) {
     // Re-enable callbacks with clean state
     furi_hal_serial_async_rx_start(uart->serial_handle, uart_rx_callback, uart, false);
     
-    // Flush any pending data
+    // Quick flush
     furi_hal_serial_tx(uart->serial_handle, (uint8_t*)"\r\n", 2);
-    furi_delay_ms(50);  // Allow time for flush
+    furi_delay_ms(50);
     
-    const char* test_cmd = "stop\n";
+    const char* test_commands[] = {
+        "AT\r\n",    // AT command first (most likely to get response)
+        "stop\n",    // Original command as backup
+    };
     bool connected = false;
-    const uint32_t CMD_TIMEOUT_MS = 500;
+    const uint32_t CMD_TIMEOUT_MS = 250; // Shorter timeout per command
 
-    // Send test command
-    uart_send(uart, (uint8_t*)test_cmd, strlen(test_cmd));
-    FURI_LOG_D("UART", "Sent command: %s", test_cmd);
+    for(uint8_t cmd_idx = 0; cmd_idx < sizeof(test_commands)/sizeof(test_commands[0]) && !connected; cmd_idx++) {
+        // Send test command
+        uart_send(uart, (uint8_t*)test_commands[cmd_idx], strlen(test_commands[cmd_idx]));
+        FURI_LOG_D("UART", "Sent command: %s", test_commands[cmd_idx]);
 
-    uint32_t start_time = furi_get_tick();
-    while(furi_get_tick() - start_time < CMD_TIMEOUT_MS) {
-        furi_mutex_acquire(uart->text_manager->mutex, FuriWaitForever);
-        
-        // Check if we received any data
-        size_t available;
-        if(uart->text_manager->buffer_full) {
-            available = RING_BUFFER_SIZE;
-        } else if(uart->text_manager->ring_write_index >= uart->text_manager->ring_read_index) {
-            available = uart->text_manager->ring_write_index - uart->text_manager->ring_read_index;
-        } else {
-            available = RING_BUFFER_SIZE - uart->text_manager->ring_read_index + uart->text_manager->ring_write_index;
+        uint32_t start_time = furi_get_tick();
+        while(furi_get_tick() - start_time < CMD_TIMEOUT_MS) {
+            furi_mutex_acquire(uart->text_manager->mutex, FuriWaitForever);
+            
+            size_t available = uart->text_manager->buffer_full ? RING_BUFFER_SIZE :
+                (uart->text_manager->ring_write_index >= uart->text_manager->ring_read_index) ?
+                uart->text_manager->ring_write_index - uart->text_manager->ring_read_index :
+                RING_BUFFER_SIZE - uart->text_manager->ring_read_index + uart->text_manager->ring_write_index;
+            
+            if(available > 0) {
+                connected = true;
+                FURI_LOG_D("UART", "Received %d bytes response", available);
+            }
+            
+            furi_mutex_release(uart->text_manager->mutex);
+            
+            if(connected) break;
+            furi_delay_ms(5);  // Shorter sleep interval
         }
-        
-        if(available > 0) {
-            connected = true;
-            FURI_LOG_D("UART", "Received %d bytes response", available);
-        }
-        
-        furi_mutex_release(uart->text_manager->mutex);
-        
-        if(connected) break;
-        furi_delay_ms(10);
     }
 
     FURI_LOG_I("UART", "ESP connection check: %s", connected ? "Success" : "Failed");
     return connected;
 }
-
 
 bool uart_receive_data(
     UartContext* uart,

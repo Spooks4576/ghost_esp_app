@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.2
+- improved ESP connection check reliability by trying AT command first with shorter timeouts, while keeping original 'stop' command as fallback
+
 ## v1.1.1
 - add sniff pwnagotchi command
 
