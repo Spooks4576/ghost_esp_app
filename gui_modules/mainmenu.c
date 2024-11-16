@@ -14,6 +14,7 @@
 #define ICON_WIDTH 20
 #define ICON_PADDING 3
 #define TEXT_BOTTOM_MARGIN 8
+#define BUTTON_HEIGHT 12
 
 typedef struct {
     uint8_t x;
@@ -108,6 +109,31 @@ void main_menu_set_help_callback(MainMenu* main_menu, MainMenuItemCallback callb
     main_menu->help_context = context;
 }
 
+static void draw_help_button(Canvas* canvas) {
+    const char* str = "Help";
+    const size_t vertical_offset = 3;
+    const size_t horizontal_offset = 3;
+    const size_t string_width = canvas_string_width(canvas, str);
+    
+    // Create a small arrow icon directly
+    const uint8_t arrow_width = 7;
+    const uint8_t arrow_height = 4;
+    const int32_t icon_h_offset = 3;
+    const int32_t icon_width_with_offset = arrow_width + icon_h_offset;
+    const size_t button_width = string_width + horizontal_offset * 2 + icon_width_with_offset;
+
+    const int32_t x = (canvas_width(canvas) - button_width) / 2;
+    const int32_t y = canvas_height(canvas);
+
+    // Draw text
+    canvas_draw_str(canvas, x + horizontal_offset, y - vertical_offset, str);
+    
+    // Draw small down arrow
+    const int32_t arrow_x = x + horizontal_offset + string_width + icon_h_offset;
+    const int32_t arrow_y = y - vertical_offset - arrow_height;
+    canvas_draw_line(canvas, arrow_x + 3, arrow_y + 3, arrow_x + 6, arrow_y);
+    canvas_draw_line(canvas, arrow_x + 3, arrow_y + 3, arrow_x, arrow_y);
+}
 
 static CardLayout calculate_card_layout(
     Canvas* canvas,
@@ -250,27 +276,10 @@ static void main_menu_view_draw_callback(Canvas* canvas, void* _model) {
         position++;
     }
 
-    // Draw help button last, so it's on top of everything
+    // Draw help button last
     canvas_set_font(canvas, FontSecondary);
     canvas_set_color(canvas, ColorBlack);
-
-    const size_t vertical_offset = 3;
-    const size_t horizontal_offset = 3;
-    const size_t string_width = canvas_string_width(canvas, "Help");
-    const Icon* icon = &I_ButtonDown_7x4;
-    const int32_t icon_h_offset = 3;
-    const int32_t icon_width_with_offset = icon_get_width(icon) + icon_h_offset;
-    const int32_t icon_v_offset = icon_get_height(icon) + vertical_offset + 1;
-    const size_t button_width = string_width + horizontal_offset * 2 + icon_width_with_offset;
-
-    const int32_t x = (canvas_width(canvas) - button_width) / 2;
-    const int32_t y = canvas_height(canvas);
-
-    // Position at bottom with proper margins
-    canvas_draw_str(canvas, x + horizontal_offset, y - vertical_offset, "Help");
-    canvas_draw_icon(
-        canvas, x + horizontal_offset + string_width + icon_h_offset, y - icon_v_offset, icon);
-    // Reset color
+    draw_help_button(canvas);
     canvas_set_color(canvas, ColorBlack);
 }
 static bool main_menu_view_input_callback(InputEvent* event, void* context) {

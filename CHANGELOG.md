@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.3
+- **Added specific buttondown icon for help menu button to not be dependent on firmware icons**
+
 ## v1.1.2
 - improved ESP connection check reliability by trying AT command first with shorter timeouts, while keeping original 'stop' command as fallback
 
