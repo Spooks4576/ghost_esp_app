@@ -470,10 +470,15 @@ void uart_stop_thread(UartContext *uart)
 
 // Send data over UART
 void uart_send(UartContext *uart, const uint8_t *data, size_t len) {
-    // Only try to send if serial is active
-    if (uart && uart->serial_handle && uart->is_serial_active) {
-        furi_hal_serial_tx(uart->serial_handle, data, len);
+    if(!uart || !uart->serial_handle || !uart->is_serial_active || !data || len == 0) {
+        return;
     }
+    
+    // Send data directly without mutex lock for basic commands
+    furi_hal_serial_tx(uart->serial_handle, data, len);
+    
+    // Small delay to ensure transmission
+    furi_delay_ms(5);
 }
 
 
@@ -565,7 +570,7 @@ bool uart_receive_data(
     uart->pcap = false;  // Reset capture state
     furi_stream_buffer_reset(uart->pcap_stream);
    
-    // Clear display
+    // Clear display before switching view
     text_box_set_text(state->text_box, "");
     text_box_set_focus(state->text_box, TextBoxFocusEnd);
 
@@ -579,13 +584,19 @@ bool uart_receive_data(
             extension);
        
         if(!uart->storageContext->HasOpenedFile) {
-            FURI_LOG_E("UART", "Failed to open file: Prefix=%s, Ext=%s, Folder=%s", prefix, extension, TargetFolder);
+            FURI_LOG_E("UART", "Failed to open file");
             return false;
         }
     }
 
-    view_dispatcher_switch_to_view(view_dispatcher, 5);
+    // Set the view state before switching
+    state->previous_view = state->current_view;
     state->current_view = 5;
 
-    return true;  // Indicate success
+    // Process any pending events before view switch
+    furi_delay_ms(5);
+    
+    view_dispatcher_switch_to_view(view_dispatcher, 5);
+
+    return true;
 }

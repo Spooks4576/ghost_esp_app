@@ -108,57 +108,16 @@ static bool confirmation_view_input_callback(InputEvent* event, void* context) {
                     model->scroll_position < model->total_lines - 4) {
             model->scroll_position++;
             consumed = true;
-        }
-    }
-
-    // Easter egg sequence check - only on press events
-    if(model->header && strcmp(model->header, "App Info") == 0 && event->type == 0) {
-        // Expected sequence: Up,Up,Down,Down,Left,Right,Left,Right
-        const uint8_t sequence[] = {0,0,1,1,3,2,3,2};
-        
-        if(event->key == sequence[model->sequence_position]) {
-            model->sequence_position++;
-            FURI_LOG_D("EasterEgg", "Correct button %d, pos %d", event->key, model->sequence_position);
-            
-            // Check if sequence is complete
-            if(model->sequence_position == 8) {
-                model->easter_egg_active = true;
-                model->text = "Easter Egg Found!\n\n"
-                            "Ghost in the Shell\n"
-                            "ESP32 Edition v1.0\n\n"
-                            "Made by: BigBrainAI\n"
-                            "Licensed: MIT\n\n"
-                            "A pentesting tool\n"
-                            "for research only.\n\n"
-                            "Up Up Down Down\n"
-                            "Left Right Left Right";
-                consumed = true;
-                FURI_LOG_I("EasterEgg", "Easter egg activated!");
+        } else if(event->key == InputKeyOk) {
+            if(instance->ok_callback) {
+                instance->ok_callback(instance->ok_callback_context);
             }
-        } else {
-            // Wrong button, reset sequence
-            model->sequence_position = 0;
-            // If this button is the start of sequence, count it
-            if(event->key == sequence[0]) {
-                model->sequence_position = 1;
+            consumed = true;
+        } else if(event->key == InputKeyBack) {
+            if(instance->cancel_callback) {
+                instance->cancel_callback(instance->cancel_callback_context);
             }
-        }
-    }
-
-    if(!consumed) {
-        // Handle regular confirmation actions
-        if(event->type == InputTypeShort || event->type == InputTypeLong) {
-            if(event->key == InputKeyOk) {
-                if(instance->ok_callback) {
-                    instance->ok_callback(instance->ok_callback_context);
-                }
-                consumed = true;
-            } else if(event->key == InputKeyBack) {
-                if(instance->cancel_callback) {
-                    instance->cancel_callback(instance->cancel_callback_context);
-                }
-                consumed = true;
-            }
+            consumed = true;
         }
     }
 
@@ -250,7 +209,11 @@ __attribute__((used)) void confirmation_view_set_ok_callback(
     ConfirmationView* instance,
     ConfirmationViewCallback callback,
     void* context) {
-    if(!instance) return;
+    if(!instance) {
+        FURI_LOG_E("ConfView", "Null instance in set_ok_callback");
+        return;
+    }
+    FURI_LOG_D("ConfView", "Setting OK callback: %p with context: %p", callback, context);
     instance->ok_callback = callback;
     instance->ok_callback_context = context;
 }
@@ -259,7 +222,11 @@ __attribute__((used)) void confirmation_view_set_cancel_callback(
     ConfirmationView* instance,
     ConfirmationViewCallback callback,
     void* context) {
-    if(!instance) return;
+    if(!instance) {
+        FURI_LOG_E("ConfView", "Null instance in set_cancel_callback");
+        return;
+    }
+    FURI_LOG_D("ConfView", "Setting Cancel callback: %p with context: %p", callback, context);
     instance->cancel_callback = callback;
     instance->cancel_callback_context = context;
 }

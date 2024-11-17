@@ -467,14 +467,14 @@ static const MenuCommand wifi_commands[] = {
         .folder = NULL,
         .needs_input = false,
         .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
+        .needs_confirmation = true,  // Add confirmation
+        .confirm_header = "Cast Video",
+        .confirm_text = "Make sure you've connected\nto WiFi first via the\n'Connect to WiFi' option.\n",
         .details_header = "Video Cast",
         .details_text = "Casts random videos\n"
-                       "to nearby Cast/DIAL\n"
-                       "enabled devices.\n"
-                       "Range: ~50m\n",
+                    "to nearby Cast/DIAL\n"
+                    "enabled devices.\n"
+                    "Range: ~50m\n",
     },
     {
         .label = "Printer Power",
@@ -633,7 +633,7 @@ static void confirmation_ok_callback(void* context) {
     if(cmd_ctx && cmd_ctx->state && cmd_ctx->command) {
         bool file_opened = false;
 
-        // **Step 1: Open the PCAP File First**
+        // Handle capture commands
         if(cmd_ctx->command->capture_prefix || cmd_ctx->command->file_ext || cmd_ctx->command->folder) {
             FURI_LOG_I("Capture", "Attempting to open PCAP file before sending capture command.");
             file_opened = uart_receive_data(
@@ -649,11 +649,19 @@ static void confirmation_ok_callback(void* context) {
                 free(cmd_ctx);
                 return;
             }
+            
+            // Send capture command
+            send_uart_command(cmd_ctx->command->command, cmd_ctx->state);
+            FURI_LOG_I("Capture", "Capture command sent to firmware.");
+        } else {
+            // For non-capture confirmation commands, send command and switch to text view
+            send_uart_command(cmd_ctx->command->command, cmd_ctx->state);
+            uart_receive_data(
+                cmd_ctx->state->uart_context,
+                cmd_ctx->state->view_dispatcher,
+                cmd_ctx->state,
+                "", "", "");  // No capture files needed
         }
-
-        // **Step 2: Send the Capture Command After File is Opened**
-        send_uart_command(cmd_ctx->command->command, cmd_ctx->state);
-        FURI_LOG_I("Capture", "Capture command sent to firmware.");
     }
     free(cmd_ctx);
 }
@@ -784,12 +792,6 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
         send_uart_command(command->command, state);
         return;  // Important: Return here
     }
-
-    // For regular commands:
-    // 1. First send the command
-    send_uart_command(command->command, state);
-    
-    // 2. Then switch to text view
     uart_receive_data(
         state->uart_context,
         state->view_dispatcher,
@@ -797,6 +799,12 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
         "",  // No capture prefix
         "",  // No file extension  
         ""); // No folder
+
+    furi_delay_ms(5);
+
+    send_uart_command(command->command, state);
+
+
 }
 // Menu display functions
 void show_wifi_menu(AppState* state) {
