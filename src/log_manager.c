@@ -34,7 +34,7 @@ static bool parse_log_index(const char* filename, const char* prefix, int* index
     
     char* end;
     *index = strtol(num_start, &end, 10);
-    if(*end != '.') return false;
+    if(*end != '.' || *index < 0 || (end == num_start)) return false;
     
     return true;
 }
@@ -100,6 +100,16 @@ bool get_latest_log_file(Storage* storage, const char* dir, const char* prefix, 
     free(filename);
     storage_dir_close(dir_handle);
     storage_file_free(dir_handle);
+    
+    if(result) {
+        File* test_file = storage_file_alloc(storage);
+        if(!storage_file_open(test_file, out_path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+            FURI_LOG_W("LogManager", "Latest log file cannot be opened: %s", out_path);
+            result = false;
+        }
+        storage_file_close(test_file);
+        storage_file_free(test_file);
+    }
     
     return result;
 }

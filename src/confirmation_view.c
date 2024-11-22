@@ -149,9 +149,8 @@ __attribute__((used)) ConfirmationView* confirmation_view_alloc(void) {
             model->scroll_position = 0;
             model->total_lines = 0;
             model->can_scroll = false;
-            // Initialize easter egg state
             model->easter_egg_active = false;
-            model->sequence_position = 0;  // Only tracking position now
+            model->sequence_position = 0;
         },
         true);
 
