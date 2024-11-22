@@ -511,8 +511,8 @@ bool uart_is_esp_connected(UartContext* uart) {
     furi_delay_ms(50);
     
     const char* test_commands[] = {
-        "AT\r\n",    // AT command first (most likely to get response)
-        "stop\n",    // Original command as backup
+        "stop\n",    // Try stop command first
+        "AT\r\n",    // AT command as backup
     };
     bool connected = false;
     const uint32_t CMD_TIMEOUT_MS = 250; // Shorter timeout per command
