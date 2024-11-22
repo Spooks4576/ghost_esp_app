@@ -371,7 +371,10 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
             show_confirmation_dialog_ex(
                 app_state,
                 "Clear Logs",
-                "Are you sure you want\n to clear the logs?\nThis action cannot be undone.",
+                "Clear all log files?\n"
+                "This cannot be undone.\n"
+                "Files located at:\n"
+                "apps_data/ghost_esp/logs\n",
                 logs_clear_confirmed_callback,
                 logs_clear_cancelled_callback);
             break;
@@ -380,7 +383,9 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
             show_confirmation_dialog_ex(
                 app_state,
                 "Clear NVS",
-                "Are you sure you want\n to clear NVS?\nThis will reset all ESP settings.",
+                "Reset ESP settings?\n"
+                "This cannot be undone.\n"
+                "All ESP configs will be reset",
                 nvs_clear_confirmed_callback,
                 nvs_clear_cancelled_callback);
             break;
@@ -396,7 +401,7 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
                 "Updated by: Jay Candel\n"
                 "Built with <3";
 
-            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.4");
+            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.5");
             confirmation_view_set_text(app_state->confirmation_view, info_text);
             
             // Save current view before switching

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.5
+- expanded quick help menu with more context-specific tips
+- swapped order of AT and Stop commands in ESP Check
+- cleaned up general UI text
+- improved handling of corrupted or missing log files
+- general code cleanup and improvements
+
 ## v1.1.4
 - Added confirmation dialog for Cast Video command 
 - Fixed view locking issues with confirmation dialog

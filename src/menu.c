@@ -51,12 +51,11 @@ static const MenuCommand wifi_commands[] = {
         .confirm_header = NULL,
         .confirm_text = NULL,
         .details_header = "WiFi AP Scanner",
-        .details_text = "Scans for nearby WiFi\n"
-                       "Access Points and shows:\n"
-                       "- Network names (SSIDs)\n"
-                       "- Signal strength\n"
+        .details_text = "Scans for WiFi APs:\n"
+                       "- SSID names\n"
+                       "- Signal levels\n"
                        "- Security type\n"
-                       "- Channel\n",
+                       "- Channel info\n",
     },
     {
         .label = "Scan WiFi Stations",
@@ -70,11 +69,11 @@ static const MenuCommand wifi_commands[] = {
         .confirm_header = NULL,
         .confirm_text = NULL,
         .details_header = "Station Scanner",
-        .details_text = "Scans for client devices\n"
-                       "connected to networks:\n"
-                       "- MAC addresses\n"
-                       "- Connected SSID\n"
-                       "- Signal strength\n",
+        .details_text = "Scans for clients:\n"
+                       "- MAC addresses\n" 
+                       "- Network SSID\n"
+                       "- Signal level\n"
+                       "Range: ~50-100m\n",
     },
     {
         .label = "Stop Scan",
@@ -283,8 +282,8 @@ static const MenuCommand wifi_commands[] = {
         .confirm_text = NULL,
         .details_header = "Raw Packet Capture",
         .details_text = "Captures all WiFi\n"
-                       "packets in range.\n"
-                       "Saves to PCAP file.\n"
+                       "traffic in range.\n" 
+                       "Saves as PCAP.\n"
                        "Range: ~50-100m\n",
     },
     {
@@ -299,9 +298,9 @@ static const MenuCommand wifi_commands[] = {
         .confirm_header = NULL,
         .confirm_text = NULL,
         .details_header = "PMKID Capture",
-        .details_text = "Captures PMKID/EAPOL\n"
-                       "frames for cracking.\n"
-                       "Saves to PCAP file.\n"
+        .details_text = "Captures PMKID and\n"
+                       "EAPOL handshakes.\n"
+                       "Saves as PCAP.\n"
                        "Range: ~50-100m\n",
     },
     {
@@ -419,12 +418,11 @@ static const MenuCommand wifi_commands[] = {
         .confirm_header = "Evil Portal",
         .confirm_text = "You need to configure\n settings in the WebUI\n for this command.\n\n",
         .details_header = "Evil Portal",
-        .details_text = "Starts captive portal\n"
-                       "for credential harvest.\n"
+        .details_text = "Captive portal for\n"
+                       "credential harvest.\n"
                        "Configure in WebUI:\n"
                        "- Portal settings\n"
-                       "- Landing page\n"
-                       "- Credentials DB\n",
+                       "- Landing page\n",
     },
     {
         .label = "Stop Portal",
@@ -467,7 +465,7 @@ static const MenuCommand wifi_commands[] = {
         .folder = NULL,
         .needs_input = false,
         .input_text = NULL,
-        .needs_confirmation = true,  // Add confirmation
+        .needs_confirmation = true,
         .confirm_header = "Cast Video",
         .confirm_text = "Make sure you've connected\nto WiFi first via the\n'Connect to WiFi' option.\n",
         .details_header = "Video Cast",
@@ -510,11 +508,11 @@ static const MenuCommand ble_commands[] = {
         .confirm_header = NULL,
         .confirm_text = NULL,
         .details_header = "Flipper Scanner",
-        .details_text = "Scans for nearby\n"
-                       "Flipper Zero devices.\n"
-                       "Shows device info:\n"
-                       "- Name & Address\n"
-                       "- Signal strength\n",
+        .details_text = "Scans for Flippers:\n"
+                       "- Device name\n"
+                       "- BT address\n"
+                       "- Signal level\n"
+                       "Range: ~50m\n",
     },
     {
         .label = "AirTag Scanner",
@@ -572,7 +570,7 @@ static const MenuCommand ble_commands[] = {
 // GPS menu command definitions 
 static const MenuCommand gps_commands[] = {
     {
-        .label = "WarDrive Mode", 
+        .label = "Start Wardriving", 
         .command = "startwd\n",
         .capture_prefix = "wardrive_scan",
         .file_ext = "csv", 
@@ -582,16 +580,15 @@ static const MenuCommand gps_commands[] = {
         .needs_confirmation = false,
         .confirm_header = NULL,
         .confirm_text = NULL,
-        .details_header = "WarDriving Mode",
-        .details_text = "Maps WiFi networks\n"
-                       "with GPS location.\n"
-                       "Saves data to CSV:\n"
-                       "- Network details\n"
-                       "- GPS coordinates\n"
-                       "- Signal strength\n",
+        .details_header = "Wardrive Mode",
+        .details_text = "Maps WiFi networks:\n"
+                       "- Network info\n"
+                       "- GPS location\n"
+                       "- Signal levels\n"
+                       "Saves as CSV\n",
     },
     {
-        .label = "Stop WarDrive",
+        .label = "Stop Wardriving",
         .command = "startwd -s\n",
         .capture_prefix = NULL,
         .file_ext = NULL,
@@ -809,17 +806,17 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 // Menu display functions
 void show_wifi_menu(AppState* state) {
     show_menu(state, wifi_commands, COUNT_OF(wifi_commands), 
-              "WiFi Utilities:", state->wifi_menu, 1);
+              "WiFi Commands:", state->wifi_menu, 1);
 }
 
 void show_ble_menu(AppState* state) {
     show_menu(state, ble_commands, COUNT_OF(ble_commands),
-              "BLE Utilities:", state->ble_menu, 2);
+              "BLE Commands:", state->ble_menu, 2);
 }
 
 void show_gps_menu(AppState* state) {
     show_menu(state, gps_commands, COUNT_OF(gps_commands),
-              "GPS Utilities:", state->gps_menu, 3);
+              "GPS Commands:", state->gps_menu, 3);
 }
 
 // Menu command handlers
@@ -892,8 +889,31 @@ static void show_menu_help(void* context, uint32_t index) {
 
     // Define help text with essential actions only
     const char* help_text = 
-        "Hold [Ok]\n    Show details for commands\n\n"
-        "[OPTIONAL]\nBack in output view\nstops all operations.\n\n\n";
+        "=== Controls ===\n"
+        "Hold [Ok]\n"
+        "    Show command details\n"
+        "Back button returns to\n"
+        "previous menu\n"
+        "\n"
+        "=== File Locations ===\n"
+        "PCAP files: /pcaps\n"
+        "GPS data: /wardrive\n"
+        "\n"
+        "=== Tips ===\n"
+        "- One capture at a time\n"
+        "  for best performance\n"
+        "- Hold OK on any command\n"
+        "  to see range & details\n"
+        "\n"
+        "=== Settings ===\n"
+        "Configure options in\n"
+        "SET menu including:\n"
+        "- Auto-stop behavior\n"
+        "- LED settings\n"
+        "\n"
+        "Join the Discord\n"
+        "for support and\n"
+        "to stay updated!\n";
 
     // Set header and help text in the confirmation view
     confirmation_view_set_header(state->confirmation_view, "Quick Help");
@@ -1083,10 +1103,10 @@ static void show_menu(AppState* state, const MenuCommand* commands, size_t comma
 
 void show_main_menu(AppState* state) {
     main_menu_reset(state->main_menu);
-    main_menu_set_header(state->main_menu, "");  // Empty header since we're drawing our own
+    main_menu_set_header(state->main_menu, "");
     main_menu_add_item(state->main_menu, "WiFi", 0, submenu_callback, state);
     main_menu_add_item(state->main_menu, "BLE", 1, submenu_callback, state);
-    main_menu_add_item(state->main_menu, "GPS", 2, submenu_callback, state);  // GPS restored
+    main_menu_add_item(state->main_menu, "GPS", 2, submenu_callback, state);
     main_menu_add_item(state->main_menu, " SET", 3, submenu_callback, state);
     
     // Set up help callback
