@@ -34,7 +34,16 @@ static bool parse_log_index(const char* filename, const char* prefix, int* index
     
     char* end;
     *index = strtol(num_start, &end, 10);
-    if(*end != '.' || *index < 0 || (end == num_start)) return false;
+    
+    // Debug print to see what's happening
+    FURI_LOG_D("LogManager", "Parsing '%s': num_start='%s', end='%s'", filename, num_start, end);
+    
+    // Check for valid number and .txt extension
+    if(*index < 0 || (end == num_start) || // Invalid number
+       strncmp(end, ".txt", 4) != 0 ||     // Must end with .txt
+       *(end + 4) != '\0') {               // Nothing should follow .txt
+        return false;
+    }
     
     return true;
 }
