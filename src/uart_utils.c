@@ -243,7 +243,7 @@ void handle_uart_rx_data(uint8_t *buf, size_t len, void *context) {
             FURI_LOG_E("UART", "Failed to write log data: expected %zu, wrote %zu", len, written);
         } else {
             bytes_since_sync += written;
-            if(bytes_since_sync >= 8192) {
+            if(bytes_since_sync >= 1024) {  // Sync every 1KB
                 storage_file_sync(state->uart_context->storageContext->log_file);
                 bytes_since_sync = 0;
                 FURI_LOG_D("UART", "Synced log file to storage");

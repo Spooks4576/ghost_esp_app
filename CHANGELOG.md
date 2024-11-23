@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.6
+- sync files more frequently
+
 ## v1.1.5
 - expanded quick help menu with more context-specific tips
 - swapped order of AT and Stop commands in ESP Check
