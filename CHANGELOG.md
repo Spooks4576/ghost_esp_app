@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.7
+- added null checks before freeing resources
+
 ## v1.1.6
 - sync files more frequently
 
