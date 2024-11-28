@@ -1,5 +1,11 @@
 # Changelog
 
+
+## v1.1.7
+- added null checks before freeing resources
+- remove unused commands from menu.c and cleaned up command details
+- initialise uart in esp connection check if needed
+
 ## v1.1.6
 - sync files more frequently
 

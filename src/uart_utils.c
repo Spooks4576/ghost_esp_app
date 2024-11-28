@@ -430,30 +430,43 @@ UartContext* uart_init(AppState* state) {
 void uart_free(UartContext *uart) {
     if(!uart) return;
 
-    if(uart->text_manager) {
-        text_buffer_free(uart->text_manager);
-        uart->text_manager = NULL;
-    }
-
-    // Stop thread and wait for it to finish
+    // Stop the worker thread
     if(uart->rx_thread) {
         furi_thread_flags_set(furi_thread_get_id(uart->rx_thread), WorkerEvtStop);
         furi_thread_join(uart->rx_thread);
         furi_thread_free(uart->rx_thread);
+        uart->rx_thread = NULL;
     }
 
-    // Clean up serial after thread is stopped
+    // Clean up serial
     if(uart->serial_handle) {
+        furi_hal_serial_async_rx_stop(uart->serial_handle);
         furi_hal_serial_deinit(uart->serial_handle);
         furi_hal_serial_control_release(uart->serial_handle);
+        uart->serial_handle = NULL;
     }
 
-    // Free streams after everything is stopped
-    if(uart->rx_stream) furi_stream_buffer_free(uart->rx_stream);
-    if(uart->pcap_stream) furi_stream_buffer_free(uart->pcap_stream);
+    // Free streams
+    if(uart->rx_stream) {
+        furi_stream_buffer_free(uart->rx_stream);
+        uart->rx_stream = NULL;
+    }
+    if(uart->pcap_stream) {
+        furi_stream_buffer_free(uart->pcap_stream);
+        uart->pcap_stream = NULL;
+    }
 
-    // Clean up storage context last
-    if(uart->storageContext) uart_storage_free(uart->storageContext);
+    // Clean up storage context
+    if(uart->storageContext) {
+        uart_storage_free(uart->storageContext);
+        uart->storageContext = NULL;
+    }
+
+    // Free text manager
+    if(uart->text_manager) {
+        text_buffer_free(uart->text_manager);
+        uart->text_manager = NULL;
+    }
 
     free(uart);
 }
