@@ -172,6 +172,16 @@ int32_t ghost_esp_app(void* p) {
    // Initialize UART in background
    state->uart_context = uart_init(state);
 
+   // Check if ESP is connected, if not, try to initialize it
+   if(!uart_is_esp_connected(state->uart_context)) {
+       FURI_LOG_W("Ghost_ESP", "ESP not connected, trying to initialize...");
+       if(uart_init(state) != NULL) {
+           FURI_LOG_I("Ghost_ESP", "ESP initialized successfully");
+       } else {
+           FURI_LOG_E("Ghost_ESP", "Failed to initialize ESP");
+       }
+   }
+
    // Set up and run GUI
    Gui* gui = furi_record_open("gui");
    if(gui && state->view_dispatcher) {
