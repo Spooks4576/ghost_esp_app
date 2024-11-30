@@ -29,3 +29,5 @@ void handle_gps_menu(AppState* state, uint32_t index);
 void show_wifi_menu(AppState* state);
 void show_ble_menu(AppState* state);
 void show_gps_menu(AppState* state);
+
+// 6675636B796F7564656B69

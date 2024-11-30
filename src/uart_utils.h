@@ -98,3 +98,5 @@ void uart_storage_reset_logs(UartStorageContext *ctx);
 void uart_storage_safe_cleanup(UartStorageContext* ctx);
 
 #endif
+
+// 6675636B796F7564656B69

@@ -387,7 +387,24 @@ static const MenuCommand wifi_commands[] = {
                        "Saves to PCAP file.\n"
                        "Range: ~50-100m\n",
     },
-    
+    {
+        .label = "Sniff EAPOL",
+        .command = "capture -eapol\n",
+        .capture_prefix = "eapol_capture",
+        .file_ext = "pcap",
+        .folder = GHOST_ESP_APP_FOLDER_PCAPS,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "EAPOL Capture",
+        .details_text = "Captures EAPOL/4-way\n"
+                       "handshake frames.\n"
+                       "Saves to PCAP file.\n"
+                       "Range: ~50-100m\n",
+    },
+
     // Portal & Network Operations  
     {
         .label = "Evil Portal",
@@ -516,22 +533,6 @@ static const MenuCommand ble_commands[] = {
                        "- Last seen time\n",
     },
     {
-        .label = "Sniff BLE",
-        .command = "blescan -s\n",
-        .capture_prefix = "ble_capture",
-        .file_ext = "pcap",
-        .folder = GHOST_ESP_APP_FOLDER_PCAPS,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "BLE Sniffer",
-        .details_text = "Captures Bluetooth Low\n"
-                       "Energy traffic.\n"
-                       "Range: ~10-30m\n",
-    },
-    {
         .label = "Stop BLE Scan",
         .command = "blescan -s\n",
         .capture_prefix = NULL,
@@ -547,10 +548,76 @@ static const MenuCommand ble_commands[] = {
                        "Bluetooth scanning\n"
                        "operations.\n",
     },
+    {
+        .label = "BLE Raw Capture",
+        .command = "capture -ble\n",
+        .capture_prefix = "ble_raw_capture",
+        .file_ext = "pcap",
+        .folder = GHOST_ESP_APP_FOLDER_PCAPS,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "BLE Raw Capture",
+        .details_text = "Captures raw BLE\n"
+                       "traffic and data.\n"
+                       "Range: ~10-30m\n",
+    },
+    {
+        .label = "Stop BLE Capture",
+        .command = "capture -blestop\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop BLE Capture",
+        .details_text = "Stops any active\n"
+                       "BLE packet capture\n"
+                       "operations.\n",
+    },
 };
 
 // GPS menu command definitions 
 static const MenuCommand gps_commands[] = {
+    {
+        .label = "GPS Info",
+        .command = "gpsinfo\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "GPS Information",
+        .details_text = "Shows GPS details:\n"
+                       "- Position (Lat/Long)\n"
+                       "- Altitude & Speed\n"
+                       "- Direction & Quality\n"
+                       "- Satellite Status\n",
+    },
+    {
+        .label = "Stop GPS Info",
+        .command = "gpsinfo -s\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop GPS Info",
+        .details_text = "Stops displaying\n"
+                       "GPS information\n"
+                       "updates.\n",
+    },
     {
         .label = "Start Wardriving", 
         .command = "startwd\n",
@@ -965,12 +1032,16 @@ bool back_event_callback(void* context) {
 
             // Stop operations in a logical order
             const char* stop_commands[] = {
-                "stopscan\n",
-                "stopspam\n",
-                "stopdeauth\n",
-                "stopportal\n",
-                "blescan -s\n",
-                "stop\n"
+                "capture -stop\n",     // Stop any WiFi packet captures
+                "capture -blestop\n",  // Stop any BLE captures
+                "stopscan\n",          // Stop WiFi scanning
+                "stopspam\n",          // Stop beacon spam attacks
+                "stopdeauth\n",        // Stop deauth attacks
+                "stopportal\n",        // Stop evil portal
+                "blescan -s\n",        // Stop BLE scanning
+                "gpsinfo -s\n",        // Stop GPS info updates
+                "startwd -s\n",        // Stop wardriving
+                "stop\n"               // General stop command
             };
 
             for(size_t i = 0; i < COUNT_OF(stop_commands); i++) {
@@ -1139,6 +1210,9 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyUp:
                     if(current_index > 0) {
                         submenu_set_selected_item(current_menu, current_index - 1);
+                    } else {
+                        // Wrap to bottom
+                        submenu_set_selected_item(current_menu, commands_count - 1);
                     }
                     consumed = true;
                     break;
@@ -1146,6 +1220,9 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyDown:
                     if(current_index < commands_count - 1) {
                         submenu_set_selected_item(current_menu, current_index + 1);
+                    } else {
+                        // Wrap to top
+                        submenu_set_selected_item(current_menu, 0);
                     }
                     consumed = true;
                     break;
@@ -1198,6 +1275,9 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyUp:
                     if(current_index > 0) {
                         submenu_set_selected_item(current_menu, current_index - 1);
+                    } else {
+                        // Wrap to bottom
+                        submenu_set_selected_item(current_menu, commands_count - 1);
                     }
                     consumed = true;
                     break;
@@ -1205,6 +1285,9 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 case InputKeyDown:
                     if(current_index < commands_count - 1) {
                         submenu_set_selected_item(current_menu, current_index + 1);
+                    } else {
+                        // Wrap to top
+                        submenu_set_selected_item(current_menu, 0);
                     }
                     consumed = true;
                     break;
@@ -1226,3 +1309,5 @@ static bool menu_input_handler(InputEvent* event, void* context) {
 
     return consumed;
 }
+
+// 6675636B796F7564656B69

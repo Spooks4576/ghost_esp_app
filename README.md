@@ -24,6 +24,7 @@ A Flipper Zero application for interfacing with the Ghost ESP32 firmware
 - **Raw Packet Capture**: Capture raw Bluetooth packets for analysis
 
 ### 🌍 GPS
+- **GPS Information**: View real-time GPS data including position, altitude, speed and signal quality
 - **Wardriving Capabilities**: Enable Wardriving for location-based data collection
 
 ### ⚙️ Configuration Options

@@ -125,3 +125,5 @@ const SettingMetadata* settings_get_metadata(SettingKey key) {
     }
     return &SETTING_METADATA[key];
 }
+
+// 6675636B796F7564656B69

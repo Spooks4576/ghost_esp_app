@@ -67,3 +67,4 @@ void show_confirmation_view_wrapper(void* context, ConfirmationView* view) {
     // Redirect to show_confirmation_dialog_ex with the stored dialog data
     show_confirmation_dialog_ex(context, current_dialog.header, current_dialog.text, current_dialog.ok_callback, current_dialog.cancel_callback);
 }
+// 6675636B796F7564656B69

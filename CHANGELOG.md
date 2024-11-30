@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.8
+- Added GPS Info command to view real-time GPS data
+- Added Stop GPS Info command
+- UART Initialisation tweaks
+- Add back EAPOL capture command
+- Added BLE Raw Capture command
+- Added Stop BLE Raw Capture command
+- Expanded Stop on Back to include all stop commands
+- Added wrap-around scrolling in command menus
+- Miscellaneous bug fixes and improvements
 
 ## v1.1.7
 - added null checks before freeing resources
