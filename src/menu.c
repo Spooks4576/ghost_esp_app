@@ -492,6 +492,24 @@ static const MenuCommand wifi_commands[] = {
                        "- Printer IP/Port\n"
                        "- Protocol type\n",
     },
+    {
+        .label = "Scan Local Network",
+        .command = "scanlocal\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = true,
+        .confirm_header = "Local Network Scan",
+        .confirm_text = "Make sure you've connected\nto WiFi first via the\n'Connect to WiFi' option.\n",
+        .details_header = "Network Scanner",
+        .details_text = "Scans local network for:\n"
+                       "- Printers\n"
+                       "- Smart devices\n"
+                       "- Cast devices\n"
+                       "Requires WiFi connection\n",
+    },
 };
 
 // BLE menu command definitions

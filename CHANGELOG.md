@@ -9,6 +9,7 @@
 - Added Stop BLE Raw Capture command
 - Expanded Stop on Back to include all stop commands
 - Added wrap-around scrolling in command menus
+- Add Scan Local command to scan for devices on connected network
 - Miscellaneous bug fixes and improvements
 
 ## v1.1.7
