@@ -10,6 +10,7 @@
 - Expanded Stop on Back to include all stop commands
 - Added wrap-around scrolling in command menus
 - Add Scan Local command to scan for devices on connected network
+- Respect Momentum settings for ESP UART Channel
 - Miscellaneous bug fixes and improvements
 
 ## v1.1.7
