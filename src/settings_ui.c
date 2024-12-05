@@ -451,10 +451,6 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
     if(!app_state) return false;
 
     switch(event_id) {
-        case SETTING_SHOW_INFO:
-            show_app_info(app_state);
-            return true;
-
         case SETTING_CLEAR_LOGS:
             show_confirmation_dialog_ex(
                 app_state,
@@ -503,9 +499,41 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
                 nvs_clear_cancelled_callback);
             return true;
 
+        case SETTING_SHOW_INFO: {
+            // Create a new context for the confirmation dialog
+            SettingsConfirmContext* confirm_ctx = malloc(sizeof(SettingsConfirmContext));
+            if(!confirm_ctx) return false;
+            confirm_ctx->state = app_state;
+
+            const char* info_text = 
+                "Created by: Spooky\n"
+                "Updated by: Jay Candel\n"
+                "Built with <3";
+
+            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.8");
+            confirmation_view_set_text(app_state->confirmation_view, info_text);
+            
+            // Save current view before switching
+            app_state->previous_view = app_state->current_view;
+            
+            confirmation_view_set_ok_callback(
+                app_state->confirmation_view, 
+                app_info_ok_callback,
+                confirm_ctx);
+            confirmation_view_set_cancel_callback(
+                app_state->confirmation_view, 
+                app_info_cancel_callback,
+                confirm_ctx);
+
+            view_dispatcher_switch_to_view(app_state->view_dispatcher, 7);
+            app_state->current_view = 7;
+            break;
+        }
+
         default:
             return false;
     }
+    return false;
 }
 
 // 6675636B796F7564656B69
