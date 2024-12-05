@@ -109,6 +109,24 @@ const SettingMetadata SETTING_METADATA[SETTINGS_COUNT] = {
             .uart_command = NULL
         },
         .is_action = false
+    },
+    [SETTING_CLEAR_PCAPS] = {
+        .name = "Clear PCAPs",
+        .data.action = {
+            .name = "Clear PCAPs",
+            .command = NULL,
+            .callback = &clear_pcap_files
+        },
+        .is_action = true
+    },
+    [SETTING_CLEAR_WARDRIVE] = {
+        .name = "Clear Wardrives",
+        .data.action = {
+            .name = "Clear Wardrives",
+            .command = NULL,
+            .callback = &clear_wardrive_files
+        },
+        .is_action = true
     }
 };
 

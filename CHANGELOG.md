@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.1.8
+## v1.1.8 Polaris 📡🌍
 - Added GPS Info command to view real-time GPS data
 - Added Stop GPS Info command
 - UART Initialisation tweaks
@@ -11,6 +11,7 @@
 - Added wrap-around scrolling in command menus
 - Add Scan Local command to scan for devices on connected network
 - Respect Momentum settings for ESP UART Channel
+- Added PCAP and Wardrive clearing options in Settings menu
 - Miscellaneous bug fixes and improvements
 
 ## v1.1.7
