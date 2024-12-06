@@ -7,6 +7,7 @@
 - Add back EAPOL capture command
 - Added BLE Raw Capture command
 - Added Stop BLE Raw Capture command
+- Added BLE Skimmer Detection command
 - Expanded Stop on Back to include all stop commands
 - Added wrap-around scrolling in command menus
 - Add Scan Local command to scan for devices on connected network

@@ -515,6 +515,24 @@ static const MenuCommand wifi_commands[] = {
 // BLE menu command definitions
 static const MenuCommand ble_commands[] = {
     {
+        .label = "Skimmer Detection",
+        .command = "capture -skimmer\n",
+        .capture_prefix = "skimmer_scan",
+        .file_ext = "pcap",
+        .folder = GHOST_ESP_APP_FOLDER_PCAPS,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Skimmer Scanner",
+        .details_text = "Detects potential\n"
+                       "card skimmers by\n"
+                       "analyzing BLE\n"
+                       "signatures and\n"
+                       "known patterns.\n",
+    },
+    {
         .label = "Find the Flippers",
         .command = "blescan -f\n",
         .capture_prefix = NULL,
