@@ -269,3 +269,138 @@ void app_info_cancel_callback(void* context) {
     // Use same callback as OK since both just return to previous view
     app_info_ok_callback(context);
 }
+
+// Add these new callback declarations
+void wardrive_clear_confirmed_callback(void* context) {
+    FURI_LOG_D("ClearWardrive", "Confirmed callback started, context: %p", context);
+    
+    SettingsConfirmContext* ctx = context;
+    if(!ctx) {
+        FURI_LOG_E("ClearWardrive", "Null context");
+        return;
+    }
+    
+    if(!ctx->state) {
+        FURI_LOG_E("ClearWardrive", "Null state in context");
+        free(ctx);
+        return;
+    }
+
+    AppState* app_state = ctx->state;
+    uint32_t prev_view = app_state->previous_view;
+    
+    FURI_LOG_D("ClearWardrive", "Previous view: %lu", prev_view);
+    clear_wardrive_files(ctx->state);
+    
+    // Reset callbacks
+    confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
+    confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
+    
+    free(ctx);
+    
+    view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
+    app_state->current_view = prev_view;
+}
+
+void wardrive_clear_cancelled_callback(void* context) {
+    // Similar to logs_clear_cancelled_callback
+    SettingsConfirmContext* ctx = context;
+    if(!ctx || !ctx->state) {
+        FURI_LOG_E("ClearWardrive", "Invalid context");
+        free(ctx);
+        return;
+    }
+
+    AppState* app_state = ctx->state;
+    uint32_t prev_view = app_state->previous_view;
+    
+    confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
+    confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
+    
+    free(ctx);
+    
+    view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
+    app_state->current_view = prev_view;
+}
+
+void pcap_clear_confirmed_callback(void* context) {
+    FURI_LOG_D("ClearPCAP", "Confirmed callback started, context: %p", context);
+    
+    SettingsConfirmContext* ctx = context;
+    if(!ctx) {
+        FURI_LOG_E("ClearPCAP", "Null context");
+        return;
+    }
+    
+    if(!ctx->state) {
+        FURI_LOG_E("ClearPCAP", "Null state in context");
+        free(ctx);
+        return;
+    }
+
+    AppState* app_state = ctx->state;
+    uint32_t prev_view = app_state->previous_view;
+    
+    FURI_LOG_D("ClearPCAP", "Previous view: %lu", prev_view);
+    clear_pcap_files(ctx->state);
+    
+    confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
+    confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
+    
+    free(ctx);
+    
+    view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
+    app_state->current_view = prev_view;
+}
+
+void pcap_clear_cancelled_callback(void* context) {
+    // Similar to logs_clear_cancelled_callback
+    SettingsConfirmContext* ctx = context;
+    if(!ctx || !ctx->state) {
+        FURI_LOG_E("ClearPCAP", "Invalid context");
+        free(ctx);
+        return;
+    }
+
+    AppState* app_state = ctx->state;
+    uint32_t prev_view = app_state->previous_view;
+    
+    confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
+    confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
+    
+    free(ctx);
+    
+    view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
+    app_state->current_view = prev_view;
+}
+
+// Add these variable item callbacks
+void on_clear_wardrive_changed(VariableItem* item) {
+    AppState* app = variable_item_get_context(item);
+    uint8_t index = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, SETTING_VALUE_NAMES_ACTION[index]);
+
+    if(index == 0) {
+        show_confirmation_dialog_ex(
+            app,
+            "Clear Wardrives",
+            "Are you sure you want to clear\nall wardrive files?\nThis action cannot be undone.",
+            wardrive_clear_confirmed_callback,
+            wardrive_clear_cancelled_callback);
+    }
+}
+
+void on_clear_pcaps_changed(VariableItem* item) {
+    AppState* app = variable_item_get_context(item);
+    uint8_t index = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, SETTING_VALUE_NAMES_ACTION[index]);
+
+    if(index == 0) {
+        show_confirmation_dialog_ex(
+            app,
+            "Clear PCAPs",
+            "Are you sure you want to clear\nall PCAP files?\nThis action cannot be undone.",
+            pcap_clear_confirmed_callback,
+            pcap_clear_cancelled_callback);
+    }
+}

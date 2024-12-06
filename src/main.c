@@ -288,3 +288,5 @@ int32_t ghost_esp_app(void* p) {
 
    return 0;
 }
+
+// 6675636B796F7564656B69

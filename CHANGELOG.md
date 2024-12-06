@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.1.8 Polaris 📡🌍
+- Added GPS Info command to view real-time GPS data
+- Added Stop GPS Info command
+- UART Initialisation tweaks
+- Add back EAPOL capture command
+- Added BLE Raw Capture command
+- Added Stop BLE Raw Capture command
+- Added BLE Skimmer Detection command
+- Expanded Stop on Back to include all stop commands
+- Added wrap-around scrolling in command menus
+- Add Scan Local command to scan for devices on connected network
+- Respect Momentum settings for ESP UART Channel
+- Added PCAP and Wardrive clearing options in Settings menu
+- Added BLE Wardriving command
+- Miscellaneous bug fixes and improvements
 
 ## v1.1.7
 - added null checks before freeing resources
