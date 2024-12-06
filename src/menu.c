@@ -669,6 +669,40 @@ static const MenuCommand gps_commands[] = {
         .details_text = "Stops wardriving\n"
                        "mode and saves any\n"
                        "remaining data.\n",
+    },
+        {
+        .label = "BLE Wardriving",
+        .command = "blewardriving\n",
+        .capture_prefix = "ble_wardrive",
+        .file_ext = "csv",
+        .folder = GHOST_ESP_APP_FOLDER_WARDRIVE,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "BLE Wardriving",
+        .details_text = "Maps BLE devices:\n"
+                       "- Device info\n"
+                       "- GPS location\n"
+                       "- Signal levels\n"
+                       "Saves as CSV\n",
+    },
+    {
+        .label = "Stop BLE Wardriving",
+        .command = "blewardriving -s\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop BLE Wardriving",
+        .details_text = "Stops BLE wardriving\n"
+                       "mode and saves any\n"
+                       "remaining data.\n",
     }
 };
 
@@ -1059,6 +1093,7 @@ bool back_event_callback(void* context) {
                 "blescan -s\n",        // Stop BLE scanning
                 "gpsinfo -s\n",        // Stop GPS info updates
                 "startwd -s\n",        // Stop wardriving
+                "blewardriving -s\n",  // Stop BLE wardriving
                 "stop\n"               // General stop command
             };
 
