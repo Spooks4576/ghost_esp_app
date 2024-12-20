@@ -85,6 +85,88 @@ cleanup:
     create_new_log(app);
 }
 
+void clear_pcap_files(void* context) {
+    AppState* app = (AppState*)context;
+    if(!app) return;
+
+    // Close current file if open
+    if(app->uart_context && app->uart_context->storageContext && 
+       app->uart_context->storageContext->current_file) {
+        storage_file_close(app->uart_context->storageContext->current_file);
+    }
+
+    // Stack allocation for better performance
+    char filename[MAX_FILENAME_LEN];
+    char full_path[MAX_PATH_LEN];
+    FileInfo file_info;
+    int deleted_count = 0;
+
+    // Open storage once
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* dir = storage_file_alloc(storage);
+
+    if(!storage_dir_open(dir, GHOST_ESP_APP_FOLDER_PCAPS)) {
+        FURI_LOG_E("ClearPCAPs", "Failed to open pcaps directory");
+        goto cleanup;
+    }
+
+    // Batch process files
+    while(storage_dir_read(dir, &file_info, filename, MAX_FILENAME_LEN)) {
+        if(file_info.flags & FSF_DIRECTORY) continue;
+
+        snprintf(full_path, MAX_PATH_LEN, "%s/%s", GHOST_ESP_APP_FOLDER_PCAPS, filename);
+
+        if(storage_simply_remove(storage, full_path)) {
+            deleted_count++;
+        }
+    }
+
+    FURI_LOG_I("ClearPCAPs", "Deleted %d files", deleted_count);
+
+cleanup:
+    storage_dir_close(dir);
+    storage_file_free(dir);
+    furi_record_close(RECORD_STORAGE);
+}
+
+void clear_wardrive_files(void* context) {
+    AppState* app = (AppState*)context;
+    if(!app) return;
+
+    // Stack allocation for better performance
+    char filename[MAX_FILENAME_LEN];
+    char full_path[MAX_PATH_LEN];
+    FileInfo file_info;
+    int deleted_count = 0;
+
+    // Open storage once
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* dir = storage_file_alloc(storage);
+
+    if(!storage_dir_open(dir, GHOST_ESP_APP_FOLDER_WARDRIVE)) {
+        FURI_LOG_E("ClearWardrive", "Failed to open wardrive directory");
+        goto cleanup;
+    }
+
+    // Batch process files
+    while(storage_dir_read(dir, &file_info, filename, MAX_FILENAME_LEN)) {
+        if(file_info.flags & FSF_DIRECTORY) continue;
+
+        snprintf(full_path, MAX_PATH_LEN, "%s/%s", GHOST_ESP_APP_FOLDER_WARDRIVE, filename);
+
+        if(storage_simply_remove(storage, full_path)) {
+            deleted_count++;
+        }
+    }
+
+    FURI_LOG_I("ClearWardrive", "Deleted %d files", deleted_count);
+
+cleanup:
+    storage_dir_close(dir);
+    storage_file_free(dir);
+    furi_record_close(RECORD_STORAGE);
+}
+
 bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* context) {
     FURI_LOG_D("SettingsSet", "Entering settings_set function for key: %d, value: %d", key, value);
 
@@ -166,6 +248,8 @@ bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* conte
 
         case SETTING_CLEAR_LOGS:
         case SETTING_CLEAR_NVS:
+        case SETTING_CLEAR_PCAPS:
+        case SETTING_CLEAR_WARDRIVE:
             if(value == 0) { // Execute on press
                 SettingsUIContext* settings_context = (SettingsUIContext*)context;
                 if(settings_context && settings_context->context) {
@@ -364,9 +448,9 @@ void settings_setup_gui(VariableItemList* list, SettingsUIContext* context) {
 
 bool settings_custom_event_callback(void* context, uint32_t event_id) {
     AppState* app_state = (AppState*)context;
-    SettingKey key = (SettingKey)event_id;
+    if(!app_state) return false;
 
-    switch(key) {
+    switch(event_id) {
         case SETTING_CLEAR_LOGS:
             show_confirmation_dialog_ex(
                 app_state,
@@ -377,18 +461,43 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
                 "apps_data/ghost_esp/logs\n",
                 logs_clear_confirmed_callback,
                 logs_clear_cancelled_callback);
-            break;
+            return true;
+
+        case SETTING_CLEAR_PCAPS:
+            show_confirmation_dialog_ex(
+                app_state,
+                "Clear PCAPs",
+                "Clear all PCAP files?\n"
+                "This cannot be undone.\n"
+                "Files located at:\n"
+                "apps_data/ghost_esp/pcaps\n",
+                pcap_clear_confirmed_callback,
+                pcap_clear_cancelled_callback);
+            return true;
+
+        case SETTING_CLEAR_WARDRIVE:
+            show_confirmation_dialog_ex(
+                app_state,
+                "Clear Wardrives",
+                "Clear all wardrive files?\n"
+                "This cannot be undone.\n"
+                "Files located at:\n"
+                "apps_data/ghost_esp/wardrive\n",
+                wardrive_clear_confirmed_callback,
+                wardrive_clear_cancelled_callback);
+            return true;
 
         case SETTING_CLEAR_NVS:
             show_confirmation_dialog_ex(
                 app_state,
                 "Clear NVS",
-                "Reset ESP settings?\n"
-                "This cannot be undone.\n"
-                "All ESP configs will be reset",
+                "Clear NVS settings?\n"
+                "This will reset all ESP\n"
+                "settings to default.\n"
+                "This cannot be undone.",
                 nvs_clear_confirmed_callback,
                 nvs_clear_cancelled_callback);
-            break;
+            return true;
 
         case SETTING_SHOW_INFO: {
             // Create a new context for the confirmation dialog
@@ -401,7 +510,7 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
                 "Updated by: Jay Candel\n"
                 "Built with <3";
 
-            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.7");
+            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.8");
             confirmation_view_set_text(app_state->confirmation_view, info_text);
             
             // Save current view before switching
@@ -424,6 +533,7 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
         default:
             return false;
     }
-
-    return true;
+    return false;
 }
+
+// 6675636B796F7564656B69
