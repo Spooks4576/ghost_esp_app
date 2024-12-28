@@ -14,7 +14,9 @@
 - Respect Momentum settings for ESP UART Channel
 - Added PCAP and Wardrive clearing options in Settings menu
 - Added BLE Wardriving command
+- Added GPS Track (GPX) command for recording GPS tracks in GPX format
 - Miscellaneous bug fixes and improvements
+
 
 ## v1.1.7
 - added null checks before freeing resources

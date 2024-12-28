@@ -721,7 +721,40 @@ static const MenuCommand gps_commands[] = {
         .details_text = "Stops BLE wardriving\n"
                        "mode and saves any\n"
                        "remaining data.\n",
-    }
+    },
+    {
+        .label = "GPS Track (GPX)",
+        .command = "gpsinfo -t\n",
+        .capture_prefix = "gps_track",
+        .file_ext = "gpx",
+        .folder = GHOST_ESP_APP_FOLDER_WARDRIVE,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "GPS Track (GPX)",
+        .details_text = "Records GPS track\n"
+                       "in GPX format for\n"
+                       "mapping software.\n"
+                       "Saves to .gpx file.\n",
+    },
+    {
+        .label = "Stop GPS Track",
+        .command = "gpsinfo -s\n", 
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop GPS Track",
+        .details_text = "Stops GPS tracking\n"
+                       "and saves the GPX\n"
+                       "track file.\n",
+    },
 };
 
 void send_uart_command(const char* command, void* state) {
