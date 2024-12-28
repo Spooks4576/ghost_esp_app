@@ -510,6 +510,34 @@ static const MenuCommand wifi_commands[] = {
                        "- Cast devices\n"
                        "Requires WiFi connection\n",
     },
+    {
+        .label = "Pineapple Detect",
+        .command = "pineap\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Pineapple Detection",
+        .details_text = "Detects WiFi Pineapple devices\n",
+    },
+    {
+        .label = "Stop Pineapple",
+        .command = "pineap -s\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop Pineapple Detection",
+        .details_text = "Stops WiFi Pineapple detection\n",
+    },
 };
 
 // BLE menu command definitions
