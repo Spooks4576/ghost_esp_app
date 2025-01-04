@@ -127,6 +127,15 @@ const SettingMetadata SETTING_METADATA[SETTINGS_COUNT] = {
             .callback = &clear_wardrive_files
         },
         .is_action = true
+    },
+    [SETTING_DISABLE_ESP_CHECK] = {
+        .name = "Disable ESP Check",
+        .data.setting = {
+            .max_value = 1,
+            .value_names = SETTING_VALUE_NAMES_BOOL,
+            .uart_command = NULL
+        },
+        .is_action = false
     }
 };
 

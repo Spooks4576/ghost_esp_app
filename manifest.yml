@@ -1,6 +1,6 @@
 name: Ghost ESP
 id: ghost_esp_app
-author: @Spooks4567 and @jaylikesbunda
+author: @Spooks4567, @jaylikesbunda
 icon: "ghost_esp.png"
 version: 1.1.4
 category: GPIO

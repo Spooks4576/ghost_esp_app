@@ -404,3 +404,10 @@ void on_clear_pcaps_changed(VariableItem* item) {
             pcap_clear_cancelled_callback);
     }
 }
+
+void on_disable_esp_check_changed(VariableItem* item) {
+    AppState* app = variable_item_get_context(item);
+    uint8_t index = variable_item_get_current_value_index(item);
+    app->settings.disable_esp_check_index = index;
+    variable_item_set_current_value_text(item, SETTING_VALUE_NAMES_BOOL[index]);
+}

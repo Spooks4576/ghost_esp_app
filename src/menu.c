@@ -510,6 +510,34 @@ static const MenuCommand wifi_commands[] = {
                        "- Cast devices\n"
                        "Requires WiFi connection\n",
     },
+    {
+        .label = "Pineapple Detect",
+        .command = "pineap\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Pineapple Detection",
+        .details_text = "Detects WiFi Pineapple devices\n",
+    },
+    {
+        .label = "Stop Pineapple",
+        .command = "pineap -s\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop Pineapple Detection",
+        .details_text = "Stops WiFi Pineapple detection\n",
+    },
 };
 
 // BLE menu command definitions
@@ -721,7 +749,40 @@ static const MenuCommand gps_commands[] = {
         .details_text = "Stops BLE wardriving\n"
                        "mode and saves any\n"
                        "remaining data.\n",
-    }
+    },
+    {
+        .label = "GPS Track (GPX)",
+        .command = "gpsinfo -t\n",
+        .capture_prefix = "gps_track",
+        .file_ext = "gpx",
+        .folder = GHOST_ESP_APP_FOLDER_WARDRIVE,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "GPS Track (GPX)",
+        .details_text = "Records GPS track\n"
+                       "in GPX format for\n"
+                       "mapping software.\n"
+                       "Saves to .gpx file.\n",
+    },
+    {
+        .label = "Stop GPS Track",
+        .command = "gpsinfo -s\n", 
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Stop GPS Track",
+        .details_text = "Stops GPS tracking\n"
+                       "and saves the GPX\n"
+                       "track file.\n",
+    },
 };
 
 void send_uart_command(const char* command, void* state) {
@@ -848,7 +909,7 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
        
         // Show error and return
         confirmation_view_set_header(state->confirmation_view, "Connection Error");
-        confirmation_view_set_text(state->confirmation_view, "ESP Not Connected!\nTry Rebooting ESP.\nReflash if issues persist.");
+        confirmation_view_set_text(state->confirmation_view, "ESP Not Connected!\nTry Rebooting ESP.\nRestarting the app.\nCheck UART Pins.\nReflash if issues persist.\n");
         confirmation_view_set_ok_callback(state->confirmation_view, error_callback, state);
         confirmation_view_set_cancel_callback(state->confirmation_view, error_callback, state);
        
@@ -881,7 +942,7 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
             text_input_result_callback,
             state,
             state->input_buffer,
-            32,
+            128,
             true);
         view_dispatcher_switch_to_view(state->view_dispatcher, 6);
         return;  // Important: Return here
