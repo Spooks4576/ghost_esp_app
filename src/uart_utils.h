@@ -11,7 +11,18 @@
 #include "menu.h"
 #include "uart_storage.h"
 #include <stdbool.h> 
-#include <momentum/momentum.h>
+#include "firmware_api.h"
+
+#ifdef HAS_MOMENTUM_SUPPORT
+#define UART_CH_ESP (momentum_settings.uart_esp_channel)
+#define UART_CH_GPS (momentum_settings.uart_nmea_channel)
+#else
+#define UART_CH_ESP FuriHalSerialIdUsart
+#define UART_CH_GPS FuriHalSerialIdLpuart
+#endif
+
+#define BAUDRATE (115200)
+
 #define TEXT_BOX_STORE_SIZE (4096)  // 4KB text box buffer size
 #define RX_BUF_SIZE 2048
 #define PCAP_BUF_SIZE 4096
@@ -27,9 +38,6 @@
 #define PCAP_GLOBAL_HEADER_SIZE 24
 #define PCAP_PACKET_HEADER_SIZE 16
 #define PCAP_TEMP_BUFFER_SIZE 4096
-#define UART_CH_ESP (momentum_settings.uart_esp_channel)
-#define UART_CH_GPS (momentum_settings.uart_nmea_channel)
-#define BAUDRATE (115200)
 
 
 void update_text_box_view(AppState* state);

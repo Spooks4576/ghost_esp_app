@@ -401,8 +401,15 @@ UartContext* uart_init(AppState* state) {
         return NULL;
     }
 
-    // Initialize serial - Only change is using UART_CH_ESP instead of FuriHalSerialIdUsart
-    uart->serial_handle = furi_hal_serial_control_acquire(UART_CH_ESP);
+    // Initialize serial with firmware-aware channel selection
+    FuriHalSerialId uart_channel;
+    if(has_momentum_features()) {
+        uart_channel = UART_CH_ESP;
+    } else {
+        uart_channel = FuriHalSerialIdUsart;
+    }
+    
+    uart->serial_handle = furi_hal_serial_control_acquire(uart_channel);
     if(uart->serial_handle) {
         furi_hal_serial_init(uart->serial_handle, 115200);
         uart->is_serial_active = true;
@@ -501,6 +508,12 @@ bool uart_is_esp_connected(UartContext* uart) {
     if(!uart || !uart->serial_handle || !uart->text_manager) {
         FURI_LOG_E("UART", "Invalid UART context");
         return false;
+    }
+
+    // Check if ESP check is disabled
+    if(uart->state && uart->state->settings.disable_esp_check_index) {
+        FURI_LOG_D("UART", "ESP connection check disabled by setting");
+        return true;
     }
 
     // Temporarily disable callbacks

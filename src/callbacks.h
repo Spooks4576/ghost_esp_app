@@ -30,3 +30,4 @@ void wardrive_clear_confirmed_callback(void* context);
 void wardrive_clear_cancelled_callback(void* context);
 void pcap_clear_confirmed_callback(void* context);
 void pcap_clear_cancelled_callback(void* context);
+void on_disable_esp_check_changed(VariableItem* item);
