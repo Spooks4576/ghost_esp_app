@@ -76,22 +76,6 @@ static const MenuCommand wifi_commands[] = {
                        "Range: ~50-100m\n",
     },
     {
-        .label = "Stop Scan",
-        .command = "stopscan\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop Scanning",
-        .details_text = "Stops any active WiFi\n"
-                       "scanning operations\n"
-                       "currently running.\n",
-    },
-    {
         .label = "List APs",
         .command = "list -a\n",
         .capture_prefix = NULL,
@@ -216,22 +200,6 @@ static const MenuCommand wifi_commands[] = {
                        "network name.\n"
                        "Range: ~50-100m\n",
     },
-    {
-        .label = "Stop Spam",
-        .command = "stopspam\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop Beacon Spam",
-        .details_text = "Stops any active\n"
-                       "beacon spam attacks\n"
-                       "currently running.\n",
-    },
     
     // Attack Operations
     {
@@ -250,22 +218,6 @@ static const MenuCommand wifi_commands[] = {
                        "disconnect clients from\n"
                        "selected network.\n"
                        "Range: ~50-100m\n",
-    },
-    {
-        .label = "Stop Deauth",
-        .command = "stopdeauth\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop Deauth",
-        .details_text = "Stops any active\n"
-                       "deauthentication\n" 
-                       "attacks running.\n",
     },
     
     // Capture Operations
@@ -355,22 +307,6 @@ static const MenuCommand wifi_commands[] = {
                        "Range: ~50-100m\n",
     },
     {
-        .label = "Stop Capture",
-        .command = "capture -stop\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop Capture",
-        .details_text = "Stops any active\n"
-                       "packet captures and\n"
-                       "saves the PCAP file.\n",
-    },
-    {
         .label = "Sniff Pwnagotchi",
         .command = "capture -pwn\n",
         .capture_prefix = "pwn_capture",
@@ -425,22 +361,6 @@ static const MenuCommand wifi_commands[] = {
                        "- Landing page\n",
     },
     {
-        .label = "Stop Portal",
-        .command = "stopportal\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop Portal",
-        .details_text = "Stops the running\n"
-                       "Evil Portal and saves\n"
-                       "captured credentials.\n",
-    },
-{
         .label = "Connect To WiFi",
         .command = "connect",
         .capture_prefix = NULL,
@@ -524,9 +444,10 @@ static const MenuCommand wifi_commands[] = {
         .details_header = "Pineapple Detection",
         .details_text = "Detects WiFi Pineapple devices\n",
     },
+    // Unified Stop Command for WiFi Operations
     {
-        .label = "Stop Pineapple",
-        .command = "pineap -s\n",
+        .label = "Stop All WiFi",
+        .command = "stop\n",
         .capture_prefix = NULL,
         .file_ext = NULL,
         .folder = NULL,
@@ -535,8 +456,14 @@ static const MenuCommand wifi_commands[] = {
         .needs_confirmation = false,
         .confirm_header = NULL,
         .confirm_text = NULL,
-        .details_header = "Stop Pineapple Detection",
-        .details_text = "Stops WiFi Pineapple detection\n",
+        .details_header = "Stop WiFi Operations",
+        .details_text = "Stops all active WiFi\n"
+                       "operations including:\n"
+                       "- Scanning\n"
+                       "- Beacon Spam\n"
+                       "- Deauth Attacks\n"
+                       "- Packet Captures\n"
+                       "- Evil Portal\n",
     },
 };
 
@@ -597,22 +524,6 @@ static const MenuCommand ble_commands[] = {
                        "- Last seen time\n",
     },
     {
-        .label = "Stop BLE Scan",
-        .command = "blescan -s\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop BLE Scan",
-        .details_text = "Stops any active\n"
-                       "Bluetooth scanning\n"
-                       "operations.\n",
-    },
-    {
         .label = "BLE Raw Capture",
         .command = "capture -ble\n",
         .capture_prefix = "ble_raw_capture",
@@ -628,9 +539,10 @@ static const MenuCommand ble_commands[] = {
                        "traffic and data.\n"
                        "Range: ~10-30m\n",
     },
+    // Unified Stop Command for BLE Operations
     {
-        .label = "Stop BLE Capture",
-        .command = "capture -blestop\n",
+        .label = "Stop All BLE",
+        .command = "stop\n",
         .capture_prefix = NULL,
         .file_ext = NULL,
         .folder = NULL,
@@ -639,10 +551,13 @@ static const MenuCommand ble_commands[] = {
         .needs_confirmation = false,
         .confirm_header = NULL,
         .confirm_text = NULL,
-        .details_header = "Stop BLE Capture",
-        .details_text = "Stops any active\n"
-                       "BLE packet capture\n"
-                       "operations.\n",
+        .details_header = "Stop BLE Operations",
+        .details_text = "Stops all active BLE\n"
+                       "operations including:\n"
+                       "- BLE Scanning\n"
+                       "- Skimmer Detection\n"
+                       "- Packet Captures\n"
+                       "- Device Detection\n",
     },
 };
 
@@ -667,22 +582,6 @@ static const MenuCommand gps_commands[] = {
                        "- Satellite Status\n",
     },
     {
-        .label = "Stop GPS Info",
-        .command = "gpsinfo -s\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop GPS Info",
-        .details_text = "Stops displaying\n"
-                       "GPS information\n"
-                       "updates.\n",
-    },
-    {
         .label = "Start Wardriving", 
         .command = "startwd\n",
         .capture_prefix = "wardrive_scan",
@@ -701,22 +600,6 @@ static const MenuCommand gps_commands[] = {
                        "Saves as CSV\n",
     },
     {
-        .label = "Stop Wardriving",
-        .command = "startwd -s\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop WarDrive",
-        .details_text = "Stops wardriving\n"
-                       "mode and saves any\n"
-                       "remaining data.\n",
-    },
-        {
         .label = "BLE Wardriving",
         .command = "blewardriving\n",
         .capture_prefix = "ble_wardrive",
@@ -735,22 +618,6 @@ static const MenuCommand gps_commands[] = {
                        "Saves as CSV\n",
     },
     {
-        .label = "Stop BLE Wardriving",
-        .command = "blewardriving -s\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Stop BLE Wardriving",
-        .details_text = "Stops BLE wardriving\n"
-                       "mode and saves any\n"
-                       "remaining data.\n",
-    },
-    {
         .label = "GPS Track (GPX)",
         .command = "gpsinfo -t\n",
         .capture_prefix = "gps_track",
@@ -767,9 +634,10 @@ static const MenuCommand gps_commands[] = {
                        "mapping software.\n"
                        "Saves to .gpx file.\n",
     },
+    // Unified Stop Command for GPS Operations
     {
-        .label = "Stop GPS Track",
-        .command = "gpsinfo -s\n", 
+        .label = "Stop All GPS",
+        .command = "stop\n",
         .capture_prefix = NULL,
         .file_ext = NULL,
         .folder = NULL,
@@ -778,10 +646,13 @@ static const MenuCommand gps_commands[] = {
         .needs_confirmation = false,
         .confirm_header = NULL,
         .confirm_text = NULL,
-        .details_header = "Stop GPS Track",
-        .details_text = "Stops GPS tracking\n"
-                       "and saves the GPX\n"
-                       "track file.\n",
+        .details_header = "Stop GPS Operations",
+        .details_text = "Stops all active GPS\n"
+                       "operations including:\n"
+                       "- GPS Info Updates\n"
+                       "- WiFi Wardriving\n"
+                       "- BLE Wardriving\n"
+                       "- GPX Tracking\n",
     },
 };
 
