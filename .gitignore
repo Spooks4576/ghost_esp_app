@@ -6,3 +6,4 @@ dist/*
 .env
 .ufbt
 checks.json
+manifest.yml

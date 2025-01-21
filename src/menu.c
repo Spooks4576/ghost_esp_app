@@ -29,6 +29,11 @@ typedef struct {
 } SniffCommandDef;
 
 typedef struct {
+    const char* label;
+    const char* command;
+} BeaconSpamDef;
+
+typedef struct {
     AppState* state;
     const MenuCommand* command;
 } MenuCommandContext;
@@ -62,7 +67,16 @@ static const SniffCommandDef sniff_commands[] = {
     {"< Sniff EAPOL >", "capture -eapol\n", "eapol_capture"},
 };
 
+// Beacon spam command definitions
+static const BeaconSpamDef beacon_spam_commands[] = {
+    {"< Beacon Spam (List) >", "beaconspam -l\n"},
+    {"< Beacon Spam (Random) >", "beaconspam -r\n"},
+    {"< Beacon Spam (Rickroll) >", "beaconspam -rr\n"},
+    {"< Beacon Spam (Custom) >", "beaconspam"},
+};
+
 static size_t current_sniff_index = 0;
+static size_t current_beacon_index = 0;
 
 // WiFi menu command definitions
 static const MenuCommand wifi_commands[] = {
@@ -177,77 +191,26 @@ static const MenuCommand wifi_commands[] = {
                         "- Beacon frames\n"
                         "- EAPOL/Handshakes\n",
     },
-    // Beacon Spam Operations
+    // Variable Beacon Spam Command
     {
-        .label = "Beacon Spam (List)",
+        .label = "< Beacon Spam (List) >",
         .command = "beaconspam -l\n",
         .capture_prefix = NULL,
         .file_ext = NULL,
         .folder = NULL,
         .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "List Beacon Spam",
-        .details_text = "Broadcasts fake APs\n"
-                        "using names from a\n"
-                        "predefined list.\n"
-                        "Range: ~50-100m\n",
-    },
-    {
-        .label = "Beacon Spam (Random)",
-        .command = "beaconspam -r\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Random Beacon Spam",
-        .details_text = "Broadcasts fake APs\n"
-                        "with randomly generated\n"
-                        "network names.\n"
-                        "Range: ~50-100m\n",
-
-    },
-    {
-        .label = "Beacon Spam (Rickroll)",
-        .command = "beaconspam -rr\n",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = false,
-        .input_text = NULL,
-        .needs_confirmation = false,
-        .confirm_header = NULL,
-        .confirm_text = NULL,
-        .details_header = "Rickroll Beacons",
-        .details_text = "Broadcasts fake APs\n"
-                        "with names from Rick\n"
-                        "Astley lyrics.\n"
-                        "Range: ~50-100m\n",
-    },
-    {
-        .label = "Custom Beacon Spam",
-        .command = "beaconspam",
-        .capture_prefix = NULL,
-        .file_ext = NULL,
-        .folder = NULL,
-        .needs_input = true,
         .input_text = "SSID Name",
         .needs_confirmation = false,
         .confirm_header = NULL,
         .confirm_text = NULL,
-        .details_header = "Custom Beacons",
-        .details_text = "Broadcasts fake APs\n"
-                        "using your custom\n"
-                        "network name.\n"
-                        "Range: ~50-100m\n",
+        .details_header = "Variable Beacon Spam",
+        .details_text = "Use Left/Right to change:\n"
+                       "- List mode\n"
+                       "- Random names\n"
+                       "- Rickroll mode\n"
+                       "- Custom SSID\n"
+                       "Range: ~50-100m\n",
     },
-
     // Attack Operations
     {
         .label = "Deauth",
@@ -760,9 +723,7 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 
     // Handle variable sniff command
     if(state->current_view == 1 && state->current_index == 5) {
-        // Use the current sniff command
         const SniffCommandDef* current_sniff = &sniff_commands[current_sniff_index];
-
         // Handle capture commands
         if(current_sniff->capture_prefix) {
             bool file_opened = uart_receive_data(
@@ -787,6 +748,28 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 
         furi_delay_ms(5);
         send_uart_command(current_sniff->command, state);
+        return;
+    }
+
+    // Handle variable beacon spam command
+    if(state->current_view == 1 && state->current_index == 6) { // Adjust index if needed
+        const BeaconSpamDef* current_beacon = &beacon_spam_commands[current_beacon_index];
+        
+        // If it's custom mode (last index), handle text input
+        if(current_beacon_index == COUNT_OF(beacon_spam_commands) - 1) {
+            state->uart_command = current_beacon->command;
+            text_input_reset(state->text_input);
+            text_input_set_header_text(state->text_input, "SSID Name");
+            text_input_set_result_callback(
+                state->text_input, text_input_result_callback, state, state->input_buffer, 128, true);
+            view_dispatcher_switch_to_view(state->view_dispatcher, 6);
+            return;
+        }
+
+        // For other modes, send command directly
+        uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
+        furi_delay_ms(5);
+        send_uart_command(current_beacon->command, state);
         return;
     }
 
@@ -1211,6 +1194,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
 
         case InputKeyRight:
         case InputKeyLeft:
+            // Handle sniff command cycling
             if(state->current_view == 1 && current_index == 5) {
                 if(event->key == InputKeyRight) {
                     current_sniff_index = (current_sniff_index + 1) % COUNT_OF(sniff_commands);
@@ -1219,10 +1203,21 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                                               (size_t)(COUNT_OF(sniff_commands) - 1) :
                                               (current_sniff_index - 1);
                 }
-
-                // Just update the display label
                 submenu_change_item_label(
                     current_menu, current_index, sniff_commands[current_sniff_index].label);
+                consumed = true;
+            }
+            // Handle beacon spam command cycling
+            else if(state->current_view == 1 && current_index == 6) { // Adjust index based on menu position
+                if(event->key == InputKeyRight) {
+                    current_beacon_index = (current_beacon_index + 1) % COUNT_OF(beacon_spam_commands);
+                } else {
+                    current_beacon_index = (current_beacon_index == 0) ?
+                                               (size_t)(COUNT_OF(beacon_spam_commands) - 1) :
+                                               (current_beacon_index - 1);
+                }
+                submenu_change_item_label(
+                    current_menu, current_index, beacon_spam_commands[current_beacon_index].label);
                 consumed = true;
             }
             break;
