@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.0
+
+- Added Variable Sniff command replacing individual commands
+- Added Variable Beacon Spam command replacing individual commands
+- Removed individual stop commands in favour of one for each section
+
+
 ## v1.1.9
 
 - Changed text input buffer size to 128 characters

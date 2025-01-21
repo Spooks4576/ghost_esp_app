@@ -16,9 +16,8 @@ typedef struct {
     SettingKey key;
 } VariableItemContext;
 
-
 #define MAX_FILENAME_LEN 256
-#define MAX_PATH_LEN 512
+#define MAX_PATH_LEN     512
 
 static inline void close_current_log(AppState* app) {
     if(app && app->uart_context && app->uart_context->storageContext &&
@@ -90,7 +89,7 @@ void clear_pcap_files(void* context) {
     if(!app) return;
 
     // Close current file if open
-    if(app->uart_context && app->uart_context->storageContext && 
+    if(app->uart_context && app->uart_context->storageContext &&
        app->uart_context->storageContext->current_file) {
         storage_file_close(app->uart_context->storageContext->current_file);
     }
@@ -174,108 +173,108 @@ bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* conte
     bool changed = false;
 
     switch(key) {
-        case SETTING_RGB_MODE:
-            if(settings->rgb_mode_index != value) {
-                settings->rgb_mode_index = value;
-                changed = true;
-            }
-            break;
+    case SETTING_RGB_MODE:
+        if(settings->rgb_mode_index != value) {
+            settings->rgb_mode_index = value;
+            changed = true;
+        }
+        break;
 
-        case SETTING_CHANNEL_HOP_DELAY:
-            if(settings->channel_hop_delay_index != value) {
-                settings->channel_hop_delay_index = value;
-                changed = true;
-            }
-            break;
+    case SETTING_CHANNEL_HOP_DELAY:
+        if(settings->channel_hop_delay_index != value) {
+            settings->channel_hop_delay_index = value;
+            changed = true;
+        }
+        break;
 
-        case SETTING_ENABLE_CHANNEL_HOPPING:
-            if(settings->enable_channel_hopping_index != value) {
-                settings->enable_channel_hopping_index = value;
-                changed = true;
-            }
-            break;
+    case SETTING_ENABLE_CHANNEL_HOPPING:
+        if(settings->enable_channel_hopping_index != value) {
+            settings->enable_channel_hopping_index = value;
+            changed = true;
+        }
+        break;
 
-        case SETTING_ENABLE_RANDOM_BLE_MAC:
-            if(settings->enable_random_ble_mac_index != value) {
-                settings->enable_random_ble_mac_index = value;
-                changed = true;
-            }
-            break;
+    case SETTING_ENABLE_RANDOM_BLE_MAC:
+        if(settings->enable_random_ble_mac_index != value) {
+            settings->enable_random_ble_mac_index = value;
+            changed = true;
+        }
+        break;
 
-        case SETTING_STOP_ON_BACK:
-            if(settings->stop_on_back_index != value) {
-                settings->stop_on_back_index = value;
-                changed = true;
-            }
-            break;
+    case SETTING_STOP_ON_BACK:
+        if(settings->stop_on_back_index != value) {
+            settings->stop_on_back_index = value;
+            changed = true;
+        }
+        break;
 
-        case SETTING_ENABLE_FILTERING:
-            if(settings->enable_filtering_index != value) {
-                settings->enable_filtering_index = value;
-                if(context) {
-                    SettingsUIContext* settings_context = (SettingsUIContext*)context;
-                    if(settings_context->context) {
-                        AppState* app_state = (AppState*)settings_context->context;
-                        if(app_state->filter_config) {
-                            app_state->filter_config->enabled = value;
-                        }
+    case SETTING_ENABLE_FILTERING:
+        if(settings->enable_filtering_index != value) {
+            settings->enable_filtering_index = value;
+            if(context) {
+                SettingsUIContext* settings_context = (SettingsUIContext*)context;
+                if(settings_context->context) {
+                    AppState* app_state = (AppState*)settings_context->context;
+                    if(app_state->filter_config) {
+                        app_state->filter_config->enabled = value;
                     }
                 }
-                changed = true;
             }
-            break;
-        case SETTING_SHOW_INFO:
-            if(value == 0) { // Execute on press
-                SettingsUIContext* settings_context = (SettingsUIContext*)context;
-                if(settings_context && settings_context->context) {
-                    FURI_LOG_I("SettingsSet", "Posting custom event to show app info dialog");
-                    AppState* app_state = (AppState*)settings_context->context;
-                    // Post a custom event with the key
-                    view_dispatcher_send_custom_event(app_state->view_dispatcher, key);
-                }
+            changed = true;
+        }
+        break;
+    case SETTING_SHOW_INFO:
+        if(value == 0) { // Execute on press
+            SettingsUIContext* settings_context = (SettingsUIContext*)context;
+            if(settings_context && settings_context->context) {
+                FURI_LOG_I("SettingsSet", "Posting custom event to show app info dialog");
+                AppState* app_state = (AppState*)settings_context->context;
+                // Post a custom event with the key
+                view_dispatcher_send_custom_event(app_state->view_dispatcher, key);
             }
-            break;
+        }
+        break;
 
-        case SETTING_REBOOT_ESP:
-            if(value == 0) { // Execute on press
-                SettingsUIContext* settings_context = (SettingsUIContext*)context;
-                if(settings_context && settings_context->send_uart_command) {
-                    FURI_LOG_I("SettingsSet", "Executing reboot command");
-                    settings_context->send_uart_command("handle_reboot\n", settings_context->context);
-                }
+    case SETTING_REBOOT_ESP:
+        if(value == 0) { // Execute on press
+            SettingsUIContext* settings_context = (SettingsUIContext*)context;
+            if(settings_context && settings_context->send_uart_command) {
+                FURI_LOG_I("SettingsSet", "Executing reboot command");
+                settings_context->send_uart_command("handle_reboot\n", settings_context->context);
             }
-            break;
+        }
+        break;
 
-        case SETTING_CLEAR_LOGS:
-        case SETTING_CLEAR_NVS:
-        case SETTING_CLEAR_PCAPS:
-        case SETTING_CLEAR_WARDRIVE:
-            if(value == 0) { // Execute on press
-                SettingsUIContext* settings_context = (SettingsUIContext*)context;
-                if(settings_context && settings_context->context) {
-                    FURI_LOG_I("SettingsSet", "Posting custom event to show confirmation dialog");
-                    AppState* app_state = (AppState*)settings_context->context;
-                    // Post a custom event with the key
-                    view_dispatcher_send_custom_event(app_state->view_dispatcher, key);
-                }
+    case SETTING_CLEAR_LOGS:
+    case SETTING_CLEAR_NVS:
+    case SETTING_CLEAR_PCAPS:
+    case SETTING_CLEAR_WARDRIVE:
+        if(value == 0) { // Execute on press
+            SettingsUIContext* settings_context = (SettingsUIContext*)context;
+            if(settings_context && settings_context->context) {
+                FURI_LOG_I("SettingsSet", "Posting custom event to show confirmation dialog");
+                AppState* app_state = (AppState*)settings_context->context;
+                // Post a custom event with the key
+                view_dispatcher_send_custom_event(app_state->view_dispatcher, key);
             }
-            break;
-        case SETTING_VIEW_LOGS_FROM_START:
-            if(settings->view_logs_from_start_index != value) {
-                settings->view_logs_from_start_index = value;
-                changed = true;
-            }
-            break;
+        }
+        break;
+    case SETTING_VIEW_LOGS_FROM_START:
+        if(settings->view_logs_from_start_index != value) {
+            settings->view_logs_from_start_index = value;
+            changed = true;
+        }
+        break;
 
-        case SETTING_DISABLE_ESP_CHECK:
-            if(settings->disable_esp_check_index != value) {
-                settings->disable_esp_check_index = value;
-                changed = true;
-            }
-            break;
+    case SETTING_DISABLE_ESP_CHECK:
+        if(settings->disable_esp_check_index != value) {
+            settings->disable_esp_check_index = value;
+            changed = true;
+        }
+        break;
 
-        default:
-            return false;
+    default:
+        return false;
     }
 
     if(changed) {
@@ -291,37 +290,37 @@ uint8_t settings_get(const Settings* settings, SettingKey key) {
     FURI_LOG_D("SettingsGet", "Getting setting for key: %d", key);
 
     switch(key) {
-        case SETTING_RGB_MODE:
-            return settings->rgb_mode_index;
+    case SETTING_RGB_MODE:
+        return settings->rgb_mode_index;
 
-        case SETTING_CHANNEL_HOP_DELAY:
-            return settings->channel_hop_delay_index;
+    case SETTING_CHANNEL_HOP_DELAY:
+        return settings->channel_hop_delay_index;
 
-        case SETTING_ENABLE_CHANNEL_HOPPING:
-            return settings->enable_channel_hopping_index;
+    case SETTING_ENABLE_CHANNEL_HOPPING:
+        return settings->enable_channel_hopping_index;
 
-        case SETTING_ENABLE_RANDOM_BLE_MAC:
-            return settings->enable_random_ble_mac_index;
+    case SETTING_ENABLE_RANDOM_BLE_MAC:
+        return settings->enable_random_ble_mac_index;
 
-        case SETTING_STOP_ON_BACK:
-            return settings->stop_on_back_index;
-            
-        case SETTING_ENABLE_FILTERING:
-            return settings->enable_filtering_index;
-        
-        case SETTING_VIEW_LOGS_FROM_START:
-            return settings->view_logs_from_start_index;
+    case SETTING_STOP_ON_BACK:
+        return settings->stop_on_back_index;
 
-        case SETTING_DISABLE_ESP_CHECK:
-            return settings->disable_esp_check_index;
+    case SETTING_ENABLE_FILTERING:
+        return settings->enable_filtering_index;
 
-        case SETTING_REBOOT_ESP:
-        case SETTING_CLEAR_LOGS:
-        case SETTING_CLEAR_NVS:
-            return 0;
+    case SETTING_VIEW_LOGS_FROM_START:
+        return settings->view_logs_from_start_index;
 
-        default:
-            return 0;
+    case SETTING_DISABLE_ESP_CHECK:
+        return settings->disable_esp_check_index;
+
+    case SETTING_REBOOT_ESP:
+    case SETTING_CLEAR_LOGS:
+    case SETTING_CLEAR_NVS:
+        return 0;
+
+    default:
+        return 0;
     }
 }
 
@@ -378,7 +377,12 @@ static void settings_item_change_callback(VariableItem* item) {
         variable_item_set_current_value_text(item, metadata->data.setting.value_names[value]);
         if(metadata->data.setting.uart_command && context->send_uart_command) {
             char command[64];
-            snprintf(command, sizeof(command), "%s %d\n", metadata->data.setting.uart_command, value + 1);
+            snprintf(
+                command,
+                sizeof(command),
+                "%s %d\n",
+                metadata->data.setting.uart_command,
+                value + 1);
             FURI_LOG_D("SettingsChange", "Sending UART command: %s", command);
             context->send_uart_command(command, context->context);
         }
@@ -449,7 +453,8 @@ void settings_setup_gui(VariableItemList* list, SettingsUIContext* context) {
             if(item) {
                 uint8_t current_value = settings_get(context->settings, key);
                 variable_item_set_current_value_index(item, current_value);
-                variable_item_set_current_value_text(item, metadata->data.setting.value_names[current_value]);
+                variable_item_set_current_value_text(
+                    item, metadata->data.setting.value_names[current_value]);
                 FURI_LOG_D("SettingsSetup", "Added setting item: %s", metadata->name);
             }
         }
@@ -461,87 +466,82 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
     if(!app_state) return false;
 
     switch(event_id) {
-        case SETTING_CLEAR_LOGS:
-            show_confirmation_dialog_ex(
-                app_state,
-                "Clear Logs",
-                "Clear all log files?\n"
-                "This cannot be undone.\n"
-                "Files located at:\n"
-                "apps_data/ghost_esp/logs\n",
-                logs_clear_confirmed_callback,
-                logs_clear_cancelled_callback);
-            return true;
+    case SETTING_CLEAR_LOGS:
+        show_confirmation_dialog_ex(
+            app_state,
+            "Clear Logs",
+            "Clear all log files?\n"
+            "This cannot be undone.\n"
+            "Files located at:\n"
+            "apps_data/ghost_esp/logs\n",
+            logs_clear_confirmed_callback,
+            logs_clear_cancelled_callback);
+        return true;
 
-        case SETTING_CLEAR_PCAPS:
-            show_confirmation_dialog_ex(
-                app_state,
-                "Clear PCAPs",
-                "Clear all PCAP files?\n"
-                "This cannot be undone.\n"
-                "Files located at:\n"
-                "apps_data/ghost_esp/pcaps\n",
-                pcap_clear_confirmed_callback,
-                pcap_clear_cancelled_callback);
-            return true;
+    case SETTING_CLEAR_PCAPS:
+        show_confirmation_dialog_ex(
+            app_state,
+            "Clear PCAPs",
+            "Clear all PCAP files?\n"
+            "This cannot be undone.\n"
+            "Files located at:\n"
+            "apps_data/ghost_esp/pcaps\n",
+            pcap_clear_confirmed_callback,
+            pcap_clear_cancelled_callback);
+        return true;
 
-        case SETTING_CLEAR_WARDRIVE:
-            show_confirmation_dialog_ex(
-                app_state,
-                "Clear Wardrives",
-                "Clear all wardrive files?\n"
-                "This cannot be undone.\n"
-                "Files located at:\n"
-                "apps_data/ghost_esp/wardrive\n",
-                wardrive_clear_confirmed_callback,
-                wardrive_clear_cancelled_callback);
-            return true;
+    case SETTING_CLEAR_WARDRIVE:
+        show_confirmation_dialog_ex(
+            app_state,
+            "Clear Wardrives",
+            "Clear all wardrive files?\n"
+            "This cannot be undone.\n"
+            "Files located at:\n"
+            "apps_data/ghost_esp/wardrive\n",
+            wardrive_clear_confirmed_callback,
+            wardrive_clear_cancelled_callback);
+        return true;
 
-        case SETTING_CLEAR_NVS:
-            show_confirmation_dialog_ex(
-                app_state,
-                "Clear NVS",
-                "Clear NVS settings?\n"
-                "This will reset all ESP\n"
-                "settings to default.\n"
-                "This cannot be undone.",
-                nvs_clear_confirmed_callback,
-                nvs_clear_cancelled_callback);
-            return true;
+    case SETTING_CLEAR_NVS:
+        show_confirmation_dialog_ex(
+            app_state,
+            "Clear NVS",
+            "Clear NVS settings?\n"
+            "This will reset all ESP\n"
+            "settings to default.\n"
+            "This cannot be undone.",
+            nvs_clear_confirmed_callback,
+            nvs_clear_cancelled_callback);
+        return true;
 
-        case SETTING_SHOW_INFO: {
-            // Create a new context for the confirmation dialog
-            SettingsConfirmContext* confirm_ctx = malloc(sizeof(SettingsConfirmContext));
-            if(!confirm_ctx) return false;
-            confirm_ctx->state = app_state;
+    case SETTING_SHOW_INFO: {
+        // Create a new context for the confirmation dialog
+        SettingsConfirmContext* confirm_ctx = malloc(sizeof(SettingsConfirmContext));
+        if(!confirm_ctx) return false;
+        confirm_ctx->state = app_state;
 
-            const char* info_text = 
-                "Created by: Spooky\n"
-                "Updated by: Jay Candel\n"
-                "Built with <3";
+        const char* info_text = "Created by: Spooky\n"
+                                "Updated by: Jay Candel\n"
+                                "Built with <3";
 
-            confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.1.9");
-            confirmation_view_set_text(app_state->confirmation_view, info_text);
-            
-            // Save current view before switching
-            app_state->previous_view = app_state->current_view;
-            
-            confirmation_view_set_ok_callback(
-                app_state->confirmation_view, 
-                app_info_ok_callback,
-                confirm_ctx);
-            confirmation_view_set_cancel_callback(
-                app_state->confirmation_view, 
-                app_info_cancel_callback,
-                confirm_ctx);
+        confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.2");
+        confirmation_view_set_text(app_state->confirmation_view, info_text);
 
-            view_dispatcher_switch_to_view(app_state->view_dispatcher, 7);
-            app_state->current_view = 7;
-            break;
-        }
+        // Save current view before switching
+        app_state->previous_view = app_state->current_view;
 
-        default:
-            return false;
+        confirmation_view_set_ok_callback(
+            app_state->confirmation_view, app_info_ok_callback, confirm_ctx);
+        confirmation_view_set_cancel_callback(
+            app_state->confirmation_view, app_info_cancel_callback, confirm_ctx);
+
+        view_dispatcher_switch_to_view(app_state->view_dispatcher, 7);
+        app_state->current_view = 7;
+        break;
+    }
+
+    default:
+        return false;
     }
     return false;
 }

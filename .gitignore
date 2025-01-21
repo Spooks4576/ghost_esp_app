@@ -5,3 +5,5 @@ dist/*
 .editorconfig
 .env
 .ufbt
+checks.json
+manifest.yml
