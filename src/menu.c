@@ -250,6 +250,42 @@ static const MenuCommand wifi_commands[] = {
                         "- Landing page\n",
     },
     {
+        .label = "Set WebUI Creds",
+        .command = "apcred",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = true,
+        .input_text = "MySSID MyPassword",
+        .needs_confirmation = false,
+        .confirm_header = NULL,
+        .confirm_text = NULL,
+        .details_header = "Set AP Credentials",
+        .details_text = "Set custom WebUI AP:\n"
+                        "Format:\nMySSID MyPassword\n"
+                        "Example: GhostNet,spooky123\n",
+    },
+    {
+        .label = "Reset WebUI Creds",
+        .command = "apcred -r\n",
+        .capture_prefix = NULL,
+        .file_ext = NULL,
+        .folder = NULL,
+        .needs_input = false,
+        .input_text = NULL,
+        .needs_confirmation = true,
+        .confirm_header = "Reset AP Credentials",
+        .confirm_text = "Reset WebUI AP to\n"
+                        "default credentials?\n"
+                        "SSID: GhostNet\n"
+                        "Password: GhostNet\n",
+        .details_header = "Reset AP Credentials",
+        .details_text = "Restores default WebUI AP:\n"
+                        "SSID: GhostNet\n"
+                        "Password: GhostNet\n"
+                        "Requires ESP reboot\n",
+    },
+    {
         .label = "Connect To WiFi",
         .command = "connect",
         .capture_prefix = NULL,

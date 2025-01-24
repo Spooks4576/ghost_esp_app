@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.1
+
+- Added 'apcred' commands to change and reset WebUI SSID & Password
+
 ## v1.2.0
 
 - Added Variable Sniff command replacing individual commands
