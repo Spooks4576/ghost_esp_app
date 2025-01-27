@@ -6,7 +6,6 @@
 #include "settings_def.h"
 #include "confirmation_view.h"
 
-// Struct definitions must come before they are used
 typedef struct {
     const char* label; // Display label in menu
     const char* command; // UART command to send
