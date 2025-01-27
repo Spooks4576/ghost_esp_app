@@ -50,14 +50,16 @@ int32_t ghost_esp_app(void* p) {
    Expansion* expansion = furi_record_open(RECORD_EXPANSION);
    expansion_disable(expansion);
 
-   // Power initialization
+   // Modified power initialization
    uint8_t attempts = 0;
    bool otg_was_enabled = furi_hal_power_is_otg_enabled();
-   while(!furi_hal_power_is_otg_enabled() && attempts++ < 5) {
+
+   // Simply try to enable OTG if not already enabled
+   while(!furi_hal_power_is_otg_enabled() && attempts++ < 3) {
        furi_hal_power_enable_otg();
-       furi_delay_ms(10);
+       furi_delay_ms(20);
    }
-   furi_delay_ms(200);  // Longer delay for power stabilization
+   furi_delay_ms(50);  // Reduced stabilization time
 
    // Set up bare minimum UI state
    AppState* state = malloc(sizeof(AppState));
@@ -150,6 +152,7 @@ int32_t ghost_esp_app(void* p) {
        UART_INIT_STACK_SIZE,  
        init_uart_task,
        state);
+   furi_thread_start(uart_init_thread);  // ACTUALLY START THE THREAD
 
    // Add views to dispatcher - check each component before adding
    if(state->view_dispatcher) {
@@ -168,19 +171,6 @@ int32_t ghost_esp_app(void* p) {
 
    // Show main menu immediately
    show_main_menu(state);
-
-   // Initialize UART in background
-   state->uart_context = uart_init(state);
-
-   // Check if ESP is connected, if not, try to initialize it
-   if(!uart_is_esp_connected(state->uart_context)) {
-       FURI_LOG_W("Ghost_ESP", "ESP not connected, trying to initialize...");
-       if(uart_init(state) != NULL) {
-           FURI_LOG_I("Ghost_ESP", "ESP initialized successfully");
-       } else {
-           FURI_LOG_E("Ghost_ESP", "Failed to initialize ESP");
-       }
-   }
 
    // Set up and run GUI
    Gui* gui = furi_record_open("gui");
