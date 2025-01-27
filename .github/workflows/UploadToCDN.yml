@@ -87,10 +87,15 @@ jobs:
                 "name": "Changes in this version",
                 "value": "DESCRIPTION_PLACEHOLDER",
                 "inline": false
+              },
+              {
+                "name": "GitHub",
+                "value": "[Ghost ESP App](https://github.com/Spooks4576/ghost_esp_app)",
+                "inline": false
               }
             ],
             "footer": {
-              "text": "Ghost ESP for Flipper Zero"
+              "text": "updated with love <3"
             },
             "timestamp": "TIMESTAMP_PLACEHOLDER"
           }]
@@ -104,7 +109,7 @@ jobs:
            '.embeds[0].description = "Version " + $ver + " is now available" |
             .embeds[0].fields[1].value = $desc |
             .embeds[0].timestamp = $ts' \
-            payload.json > payload_final.json
+           payload.json > payload_final.json
         
         # Send to Discord using the file
         curl -H "Content-Type: application/json" \
