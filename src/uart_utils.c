@@ -60,7 +60,10 @@ static void text_buffer_free(TextBufferManager* manager) {
 static void text_buffer_add(TextBufferManager* manager, const char* data, size_t len) {
     if(!manager || !data || !len) return;
     
-    furi_mutex_acquire(manager->mutex, FuriWaitForever);
+    if(furi_mutex_acquire(manager->mutex, 300) != FuriStatusOk) {
+        FURI_LOG_E("UART", "Mutex timeout! Dropping data");
+        return;
+    }
     
     for(size_t i = 0; i < len; i++) {
         manager->ring_buffer[manager->ring_write_index] = data[i];
