@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.3
+
+- Added LED Effects command
+
 ## v1.2.2
 
 - fixed race condition and blocking of UART initialization causing freeze on launch

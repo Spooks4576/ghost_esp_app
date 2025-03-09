@@ -28,6 +28,8 @@
 #include "settings_ui.h"
 
 #define UART_INIT_STACK_SIZE 2048
+#define UART_INIT_TIMEOUT_MS 1500 // ms 
+
 static int32_t init_uart_task(void* context) {
    AppState* state = context;
    
@@ -152,7 +154,23 @@ int32_t ghost_esp_app(void* p) {
        UART_INIT_STACK_SIZE,  
        init_uart_task,
        state);
-   furi_thread_start(uart_init_thread);  // ACTUALLY START THE THREAD
+   furi_thread_start(uart_init_thread);
+
+   bool uart_init_success = false;
+   uint32_t start_time = furi_get_tick();
+   while(furi_get_tick() - start_time < UART_INIT_TIMEOUT_MS) {
+       if(furi_thread_join(uart_init_thread) == 0) {
+           uart_init_success = true;
+           break;
+       }
+       furi_delay_ms(50);
+   }
+
+   if(!uart_init_success) {
+       FURI_LOG_E("Main", "UART init timeout! OTG not ready?");
+       furi_thread_flags_set(furi_thread_get_id(uart_init_thread), WorkerEvtStop);
+       furi_thread_join(uart_init_thread);
+   }
 
    // Add views to dispatcher - check each component before adding
    if(state->view_dispatcher) {
@@ -169,6 +187,11 @@ int32_t ghost_esp_app(void* p) {
        view_dispatcher_set_custom_event_callback(state->view_dispatcher, settings_custom_event_callback);
    }
 
+   if(!state->text_box) {
+       FURI_LOG_E("Main", "Text box allocation failed!");
+       return -1;  // Don't try to fuck with broken UI
+   }
+
    // Show main menu immediately
    show_main_menu(state);
 
@@ -181,10 +204,6 @@ int32_t ghost_esp_app(void* p) {
        view_dispatcher_run(state->view_dispatcher);
    }
    furi_record_close("gui");
-
-   // Wait for UART initialization to complete
-   furi_thread_join(uart_init_thread);
-   furi_thread_free(uart_init_thread);
 
    // Start cleanup - first remove views
    if(state->view_dispatcher) {
